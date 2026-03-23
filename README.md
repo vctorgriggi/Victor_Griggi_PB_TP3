@@ -1,12 +1,12 @@
-# TP3 → TP4
+# TP4
 
 ## Visão Geral
 
-O projeto implementa um sistema CRUD integrado com dois módulos — **Produtos** e **Categorias** — usando Java 21 com Spring Boot 3.2.5, interface web renderizada via Thymeleaf e uma suíte de testes que cobre desde validações unitárias até simulações de falha, integração entre os módulos e interações no navegador.
+Este TP dá continuidade ao sistema CRUD de produtos desenvolvido no TP3. O objetivo agora foi refatorar o código existente, integrar um segundo módulo (Categorias) e configurar uma esteira de CI via GitHub Actions.
 
-No TP4, o sistema original de produtos foi refatorado e integrado com um novo módulo de categorias. A refatoração incluiu a criação de uma interface genérica `CrudService<T, ID>` para abstrair operações CRUD comuns, além da integração bidirecional entre os dois módulos (um produto pode pertencer a uma categoria; uma categoria não pode ser excluída enquanto tiver produtos vinculados).
+A ideia central da refatoração foi extrair uma interface genérica `CrudService<T, ID>` que ambos os módulos implementam. Isso evita duplicação de contrato e deixa claro que qualquer entidade nova no futuro segue o mesmo padrão — basta implementar a interface.
 
-Uma esteira de CI foi configurada via GitHub Actions para automatizar build, testes e validação de cobertura.
+Para a integração, a escolha de Categorias não foi aleatória: é a relação mais natural com Produtos e permite demonstrar vínculo real entre os dois sistemas — um produto pode pertencer a uma categoria, e uma categoria não pode ser excluída enquanto tiver produtos associados. Essa restrição é validada no service antes de chegar ao banco, seguindo a mesma estratégia de fail early do TP3.
 
 ---
 
@@ -15,11 +15,11 @@ Uma esteira de CI foi configurada via GitHub Actions para automatizar build, tes
 - **Java 21** + **Spring Boot 3.2.5**
 - **Thymeleaf** — renderização server-side
 - **Spring Data JPA** + **H2** — persistência em memória
-- **Bean Validation** — validação declarativa de entidades
+- **Bean Validation** — validação declarativa
 - **Bootstrap 5** — interface responsiva via CDN
 - **JUnit 5** + **Mockito** — testes unitários e de integração
-- **Selenium WebDriver** — testes de interface no Chrome headless
-- **JaCoCo** — relatório e enforcement de cobertura
+- **Selenium WebDriver** — testes de interface (Chrome headless)
+- **JaCoCo** — cobertura de testes com enforcement no build
 - **GitHub Actions** — CI automatizado
 
 ---
@@ -37,7 +37,7 @@ src/
 │   │   ├── ProductRepository.java
 │   │   └── CategoryRepository.java
 │   ├── service/
-│   │   ├── CrudService.java              # interface genérica reutilizável
+│   │   ├── CrudService.java              # interface genérica
 │   │   ├── ProductService.java
 │   │   └── CategoryService.java
 │   ├── controller/
@@ -49,39 +49,31 @@ src/
 ├── main/resources/
 │   ├── application.properties
 │   ├── templates/
-│   │   ├── fragments/header.html         # nav bar reutilizável
+│   │   ├── fragments/header.html         # nav compartilhada
 │   │   ├── products/                     # list.html, form.html
 │   │   ├── categories/                   # list.html, form.html
 │   │   └── error.html
 │   └── static/css/style.css
 └── test/java/com/crud/
     ├── CrudApplicationTest.java
-    ├── model/
-    │   ├── ProductTest.java
-    │   └── CategoryTest.java
-    ├── service/
-    │   ├── ProductServiceTest.java
-    │   └── CategoryServiceTest.java
-    ├── controller/
-    │   ├── ProductControllerTest.java
-    │   └── CategoryControllerTest.java
-    ├── integration/
-    │   └── ProductCategoryIntegrationTest.java
+    ├── model/ProductTest.java, CategoryTest.java
+    ├── service/ProductServiceTest.java, CategoryServiceTest.java
+    ├── controller/ProductControllerTest.java, CategoryControllerTest.java
+    ├── integration/ProductCategoryIntegrationTest.java
     ├── exception/GlobalExceptionHandlerTest.java
     ├── selenium/ProductSeleniumTest.java
     ├── fuzz/ProductFuzzTest.java
     ├── failure/FailureSimulationTest.java
     └── stress/StressTest.java
 
-.github/workflows/
-└── ci.yml                                # workflow de CI
+.github/workflows/ci.yml
 ```
 
 ---
 
 ## Como Executar
 
-**Pré-requisitos:** Java 21+, Maven 3.8+ e Google Chrome (apenas para os testes Selenium).
+**Pré-requisitos:** Java 21+, Maven 3.8+ e Google Chrome (só para Selenium).
 
 ```bash
 # Iniciar a aplicação
@@ -98,95 +90,71 @@ mvn clean test jacoco:report
 
 ---
 
-## Cobertura de Testes
+## O que mudou do TP3 para o TP4
 
-O mínimo exigido era 85%. O JaCoCo está configurado para **falhar o build** caso a cobertura caia abaixo desse limiar, o que torna o requisito verificável automaticamente — não apenas declarativo.
+### Refatoração: interface genérica
 
----
+O TP3 tinha apenas o `ProductService` com os métodos CRUD soltos. Para o TP4, criei a interface `CrudService<T, ID>` com as cinco operações (`findAll`, `findById`, `save`, `update`, `delete`). Tanto o `ProductService` quanto o novo `CategoryService` implementam essa interface. Na prática, isso significa que o contrato é o mesmo para qualquer entidade — se amanhã precisar de um terceiro módulo, a estrutura já está pronta.
 
-## Testes Implementados — 172 no total
+### Integração: Product ↔ Category
 
-### Unitários (`ProductServiceTest`, `CategoryServiceTest`)
+O `Product` ganhou um campo `@ManyToOne` opcional apontando para `Category`. Opcional porque não faz sentido forçar categorização — um produto pode existir sem categoria, e os dados do TP3 continuam válidos.
 
-Cobrem todas as ramificações dos services, incluindo os *null guards* que compõem a estratégia de *fail early*. O `CategoryServiceTest` também verifica a regra de integridade que impede exclusão de categorias com produtos vinculados.
+No formulário de produto, um dropdown lista as categorias disponíveis. Na listagem, uma coluna mostra a categoria de cada produto (ou "-" quando não tem).
 
-### Controller (`ProductControllerTest`, `CategoryControllerTest`)
+A parte mais interessante da integração é a restrição de exclusão: o `CategoryService.delete()` consulta o `ProductRepository.existsByCategoryId()` antes de deletar. Se existem produtos vinculados, a operação é barrada com uma mensagem clara. É fail early aplicado à integridade referencial — o erro acontece antes de tocar no banco.
 
-Usam MockMvc para testar os endpoints HTTP diretamente, sem subir um servidor real. Verificam redirecionamentos, mensagens flash e o comportamento dos controllers ao receber entradas inválidas.
+### Fragment Thymeleaf
 
-### Integração (`ProductCategoryIntegrationTest`)
+Todas as páginas agora compartilham uma barra de navegação via `th:replace` de `fragments/header.html`. Antes, cada template era uma ilha. Agora existe navegação entre Produtos e Categorias sem precisar digitar URL.
 
-Verificam a comunicação entre os dois módulos: criação de produtos com e sem categoria, vínculo bidirecional, impedimento de exclusão de categoria com produtos, e os mesmos fluxos via HTTP.
+### GitHub Actions
 
-### Selenium (`ProductSeleniumTest`)
+O workflow `.github/workflows/ci.yml` roda em todo push e PR na main. Usa `ubuntu-latest` com Java 21 (Temurin via `actions/setup-java@v4`), executa `mvn clean test` (que já inclui o check do JaCoCo) e sobe o relatório de cobertura como artefato. Também aceita `workflow_dispatch` para execução manual.
 
-Executam o fluxo completo — criar, editar e excluir um produto — num Chrome headless. Se o Chrome não estiver disponível na máquina, os testes são ignorados via `assumeTrue`, sem quebrar o build.
-
-### Fuzz Testing (`ProductFuzzTest`)
-
-Testam sistematicamente entradas maliciosas ou inesperadas: SQL injection, XSS, strings aleatórias, valores extremos.
-
-### Simulação de Falhas (`FailureSimulationTest`)
-
-Simulam condições adversas como falha de conexão com o banco e timeout de queries.
-
-### Stress (`StressTest`)
-
-Criam 50 produtos sequencialmente, disparam 10 requisições simultâneas e listam 100 registros.
-
-### Modelo (`ProductTest`, `CategoryTest`)
-
-Validam Bean Validation nas entidades com testes parametrizados.
+O runner é hospedado pelo GitHub — não configurei auto-hospedado porque para um projeto desse porte não faz sentido manter infraestrutura própria.
 
 ---
 
-## Refatoração — TP3 → TP4
+## Testes — 172 no total
 
-### Interface genérica `CrudService<T, ID>`
+Os 126 testes do TP3 continuam passando. Os 46 novos cobrem o módulo de categorias e a integração entre os dois sistemas.
 
-Abstrai as cinco operações CRUD (`findAll`, `findById`, `save`, `update`, `delete`) numa interface reutilizável. Ambos os services implementam essa interface, eliminando duplicação de contrato e permitindo polimorfismo.
+| Categoria | Arquivo | O que cobre |
+|---|---|---|
+| Unitários | `ProductServiceTest` | Null guards, fail early, CRUD |
+| Unitários | `CategoryServiceTest` | CRUD + impedimento de exclusão com produtos vinculados |
+| Controller | `ProductControllerTest` | Endpoints HTTP, redirecionamentos, flash messages |
+| Controller | `CategoryControllerTest` | Mesma cobertura para o módulo de categorias |
+| Integração | `ProductCategoryIntegrationTest` | Vínculo entre os dois módulos via service e via HTTP |
+| Selenium | `ProductSeleniumTest` | Fluxo completo no browser (Chrome headless) |
+| Fuzz | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
+| Falhas | `FailureSimulationTest` | Banco indisponível, timeout, fail early/gracefully |
+| Stress | `StressTest` | Volume, concorrência, listagem pesada |
+| Modelo | `ProductTest`, `CategoryTest` | Bean Validation nas entidades |
+| Exception | `GlobalExceptionHandlerTest` | Tratamento centralizado |
+| Contexto | `CrudApplicationTest` | Inicialização do Spring Boot |
 
-### Integração Product ↔ Category
-
-- `Product` tem um relacionamento `@ManyToOne` opcional com `Category`.
-- `CategoryService.delete()` verifica se existem produtos vinculados antes de permitir a exclusão — fail early aplicado à integridade referencial.
-- O formulário de produto exibe um dropdown com as categorias disponíveis.
-- A listagem de produtos mostra a categoria associada.
-
-### Fragment Thymeleaf reutilizável
-
-A barra de navegação (`fragments/header.html`) é compartilhada entre todas as páginas via `th:replace`, evitando duplicação de HTML.
-
----
-
-## GitHub Actions — CI
-
-O workflow `.github/workflows/ci.yml` automatiza:
-- Build do projeto com Maven
-- Execução de todos os testes
-- Validação de cobertura via JaCoCo (mínimo 85%)
-- Upload do relatório de cobertura como artefato
-
-**Triggers:** `push` e `pull_request` na branch `main`, além de `workflow_dispatch` para execução manual.
-
-O runner utilizado é `ubuntu-latest` (hospedado pelo GitHub), com Java 21 (Temurin) configurado via `actions/setup-java@v4`.
+O JaCoCo está configurado para reprovar o build se a cobertura de linhas cair abaixo de 85%. Não é uma métrica que eu olho manualmente — é um gate automático.
 
 ---
 
 ## Fail Early e Fail Gracefully
 
-**Fail Early** — entradas inválidas são rejeitadas o mais cedo possível. O `@Valid` no controller barra dados que não atendem às constraints da entidade. Nos services, *null guards* rejeitam objetos nulos antes de qualquer acesso ao repositório. No `CategoryService`, a verificação de produtos vinculados impede exclusão indevida.
+A estratégia do TP3 foi mantida e estendida para o novo módulo.
 
-**Fail Gracefully** — exceções que chegam ao sistema são capturadas pelo `GlobalExceptionHandler` e convertidas em mensagens compreensíveis. Stack traces nunca são expostos.
+**Fail Early:** validação com `@Valid` no controller, null guards nos services, e agora também a verificação de integridade referencial no `CategoryService.delete()`. A ideia é sempre rejeitar o mais cedo possível, antes de comprometer qualquer recurso.
+
+**Fail Gracefully:** o `GlobalExceptionHandler` continua capturando exceções não tratadas e devolvendo mensagens genéricas. Stack traces nunca chegam ao usuário.
 
 ---
 
-## Decisões de Projeto e Premissas
+## Decisões e Premissas
 
-**Segunda entidade:** O módulo de categorias foi escolhido como segundo sistema por ter relação direta com produtos e demonstrar integração real — restrição de exclusão, dropdown no formulário, coluna na listagem.
+**Por que Categorias?** Era a entidade que mais fazia sentido para integrar com Produtos. A relação é direta, permite demonstrar restrição de exclusão e preenche o requisito de comunicação entre os dois sistemas sem forçar uma abstração artificial.
 
-**Categoria opcional:** O vínculo entre produto e categoria é nullable para manter compatibilidade com dados existentes e não forçar categorização.
+**Categoria opcional:** o vínculo é nullable de propósito. Não quis quebrar compatibilidade com os dados do TP3 nem obrigar o usuário a criar categorias antes de cadastrar produtos.
 
-**H2 em memória:** Elimina dependência de banco externo. Dados são perdidos ao reiniciar — aceitável para contexto acadêmico.
+**H2 em memória:** mesma decisão do TP3. Dados se perdem ao reiniciar, mas elimina dependência de banco externo. Para contexto acadêmico, a troca compensa.
 
-**Idioma:** Interface e mensagens de erro em português brasileiro; código-fonte em inglês, seguindo a convenção Java.
+**Idioma:** interface em PT-BR, código em inglês. Mesma convenção do TP3.

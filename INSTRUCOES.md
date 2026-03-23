@@ -4,7 +4,7 @@
 
 - Java 21+
 - Maven 3.8+
-- Google Chrome (apenas para os testes Selenium)
+- Google Chrome (só para os testes Selenium — se não tiver, eles são ignorados e o build não quebra)
 
 ---
 
@@ -14,93 +14,72 @@
 mvn spring-boot:run
 ```
 
-Acesse: [http://localhost:8080/products](http://localhost:8080/products)
-
-A barra de navegação permite alternar entre **Produtos** e **Categorias**.
+Acesse [http://localhost:8080/products](http://localhost:8080/products). A barra de navegação no topo permite alternar entre Produtos e Categorias.
 
 ---
 
 ## Testes e Cobertura
 
 ```bash
-# Executar todos os testes
+# Rodar todos os testes
 mvn clean test
 
-# Gerar relatório de cobertura
+# Gerar relatório de cobertura (abre em target/site/jacoco/index.html)
 mvn clean test jacoco:report
-# Relatório em: target/site/jacoco/index.html
 ```
 
----
-
-## Resultados Esperados
-
-| Métrica | Resultado |
-|---|---|
-| Total de testes | 172 passando |
-| Cobertura mínima | 85% (enforçado pelo JaCoCo) |
-
-O JaCoCo está configurado para **reprovar o build** se a cobertura cair abaixo de 85%.
+São 172 testes no total. O JaCoCo está configurado para reprovar o build automaticamente se a cobertura de linhas cair abaixo de 85%, então o `mvn clean test` já valida isso — não precisa rodar nada separado.
 
 ---
 
-## Testes Implementados
+## GitHub Actions
 
-| Categoria | Arquivo | O que cobre |
+O workflow de CI (`.github/workflows/ci.yml`) roda automaticamente em push e PR na main. Também dá para disparar manualmente via `workflow_dispatch`.
+
+O que ele faz:
+1. Configura Java 21 (Temurin) no runner `ubuntu-latest`
+2. Roda `mvn clean test` (build + testes + check de cobertura)
+3. Sobe o relatório JaCoCo como artefato
+
+Para acompanhar: aba **Actions** no repositório do GitHub. O relatório de cobertura fica disponível para download nos artefatos de cada execução.
+
+---
+
+## Resumo dos Testes
+
+| Tipo | Arquivo | O que testa |
 |---|---|---|
-| Unitários | `ProductServiceTest.java` | Null guards, fail early, operações CRUD no service |
-| Unitários | `CategoryServiceTest.java` | CRUD de categorias, impedimento de exclusão com produtos |
-| Controller | `ProductControllerTest.java` | Endpoints via MockMvc, redirecionamentos, mensagens flash |
-| Controller | `CategoryControllerTest.java` | Endpoints de categoria, validação, erros |
-| Integração | `ProductCategoryIntegrationTest.java` | Vínculo Product↔Category via service e HTTP |
-| Selenium | `ProductSeleniumTest.java` | Formulários, tabelas, botões, alertas JS |
-| Fuzz | `ProductFuzzTest.java` | SQL injection, XSS, strings aleatórias, valores extremos |
-| Falhas | `FailureSimulationTest.java` | Timeout, banco indisponível, fail early/gracefully |
-| Sobrecarga | `StressTest.java` | Volume sequencial, concorrência, listagem com 100 registros |
-| Modelo | `ProductTest.java` | Bean Validation na entidade Product |
-| Modelo | `CategoryTest.java` | Bean Validation na entidade Category |
-| Exception Handler | `GlobalExceptionHandlerTest.java` | Tratamento centralizado de exceções |
-| Contexto | `CrudApplicationTest.java` | Inicialização do contexto Spring Boot |
+| Unitários | `ProductServiceTest` | CRUD do service, null guards, fail early |
+| Unitários | `CategoryServiceTest` | CRUD de categorias, bloqueio de exclusão com produtos |
+| Controller | `ProductControllerTest` | Endpoints HTTP, validação, flash messages |
+| Controller | `CategoryControllerTest` | Mesma cobertura para categorias |
+| Integração | `ProductCategoryIntegrationTest` | Comunicação entre os dois módulos (service e HTTP) |
+| Selenium | `ProductSeleniumTest` | Fluxo completo no Chrome headless |
+| Fuzz | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
+| Falhas | `FailureSimulationTest` | Banco indisponível, timeout |
+| Stress | `StressTest` | Volume, concorrência |
+| Modelo | `ProductTest`, `CategoryTest` | Bean Validation |
+| Exception | `GlobalExceptionHandlerTest` | Tratamento centralizado de exceções |
+| Contexto | `CrudApplicationTest` | Inicialização do Spring Boot |
 
 ---
 
-## GitHub Actions — CI
+## Principais Mudanças (TP3 → TP4)
 
-O workflow de CI é executado automaticamente em:
-- `push` na branch `main`
-- `pull_request` na branch `main`
-- `workflow_dispatch` (execução manual)
+**Interface genérica `CrudService<T, ID>`** — antes, o `ProductService` tinha os métodos CRUD sem nenhum contrato formal. Agora existe uma interface que tanto ele quanto o `CategoryService` implementam. Se precisar de um terceiro módulo no futuro, a estrutura já está pronta.
 
-O workflow realiza: build, execução de testes, validação de cobertura (JaCoCo) e upload do relatório como artefato.
+**Módulo de Categorias** — CRUD completo com model, repository, service, controller e templates. Segue exatamente o mesmo padrão do módulo de Produtos.
 
-Para verificar o status: aba **Actions** do repositório no GitHub.
+**Integração Product ↔ Category** — produto tem um `@ManyToOne` opcional com categoria. O formulário de produto mostra um dropdown de categorias, e a listagem exibe a categoria associada. Categorias com produtos vinculados não podem ser excluídas (o service valida antes de deletar).
+
+**Nav bar compartilhada** — fragment Thymeleaf (`fragments/header.html`) incluído em todas as páginas via `th:replace`. Antes cada template era independente.
+
+**CI com GitHub Actions** — build, testes e cobertura automatizados em cada push/PR.
 
 ---
 
 ## Observações
 
-**Selenium:** Os testes requerem Google Chrome instalado. Na ausência do browser, são ignorados via `assumeTrue` — o build não quebra.
-
-**H2 em memória:** Os dados são perdidos ao reiniciar a aplicação.
-
-**JaCoCo:** A cobertura mínima de 85% está configurada como gate no build.
-
----
-
-## Premissas do Projeto
-
-- **Entidades:** Produto (nome, descrição, preço, quantidade, categoria) e Categoria (nome, descrição).
-- **Integração:** Produto pertence opcionalmente a uma Categoria. Categorias com produtos vinculados não podem ser excluídas.
-- **Banco de dados:** H2 em memória elimina dependência de infraestrutura externa.
-- **Interface:** Thymeleaf com Bootstrap 5 via CDN — server-side rendering, sem build de frontend.
-- **Idioma:** PT-BR na interface e mensagens de erro; inglês no código-fonte, seguindo a convenção Java.
-
----
-
-## Refatoração — Principais Mudanças
-
-- **Interface genérica `CrudService<T, ID>`:** Abstrai operações CRUD comuns. `ProductService` e `CategoryService` implementam a mesma interface.
-- **Integração Product↔Category:** Relacionamento `@ManyToOne` opcional. Restrição de exclusão de categoria com produtos vinculados.
-- **Fragment Thymeleaf:** Barra de navegação compartilhada entre todas as páginas (`fragments/header.html`).
-- **GitHub Actions:** Workflow de CI com build, testes e cobertura automatizados.
-- **Testes de integração:** `ProductCategoryIntegrationTest` verifica a comunicação entre os dois módulos.
+- O H2 é em memória — dados se perdem ao reiniciar. É proposital; elimina dependência de banco externo.
+- Os testes Selenium precisam do Chrome, mas se ele não estiver instalado, os testes são ignorados via `assumeTrue` e o build segue normalmente.
+- A categoria no produto é opcional. Dá para cadastrar produtos sem categoria, e os dados antigos continuam válidos.
