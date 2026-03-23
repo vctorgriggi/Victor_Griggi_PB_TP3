@@ -135,7 +135,15 @@ Os 126 testes do TP3 continuam passando. Os 46 novos cobrem o módulo de categor
 | Exception | `GlobalExceptionHandlerTest` | Tratamento centralizado |
 | Contexto | `CrudApplicationTest` | Inicialização do Spring Boot |
 
-O JaCoCo está configurado para reprovar o build se a cobertura de linhas cair abaixo de 85%. Não é uma métrica que eu olho manualmente — é um gate automático.
+### Cobertura (JaCoCo)
+
+| Métrica | Cobertura |
+|---|---|
+| Instruções | 98% |
+| Branches | 100% |
+| Linhas | 98% (178 de 181) |
+
+O mínimo exigido era 85%. O JaCoCo está configurado pra reprovar o build se cair abaixo disso — então não é uma métrica que eu olho manualmente, é um gate automático. O relatório completo é gerado com `mvn clean test jacoco:report` (fica em `target/site/jacoco/index.html`) e também é enviado como artefato no workflow de CI.
 
 ---
 
