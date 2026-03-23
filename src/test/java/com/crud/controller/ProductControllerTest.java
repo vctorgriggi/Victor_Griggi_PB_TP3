@@ -1,6 +1,7 @@
 package com.crud.controller;
 
 import com.crud.model.Product;
+import com.crud.service.CategoryService;
 import com.crud.service.ProductService;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -29,6 +30,9 @@ class ProductControllerTest {
 
     @MockBean
     private ProductService service;
+
+    @MockBean
+    private CategoryService categoryService;
 
     private Product createProduct(Long id, String name) {
         Product p = new Product(name, "Descrição", new BigDecimal("99.99"), 10);

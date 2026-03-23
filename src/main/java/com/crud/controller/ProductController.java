@@ -1,6 +1,7 @@
 package com.crud.controller;
 
 import com.crud.model.Product;
+import com.crud.service.CategoryService;
 import com.crud.service.ProductService;
 import jakarta.validation.Valid;
 import org.springframework.stereotype.Controller;
@@ -16,9 +17,11 @@ import java.util.NoSuchElementException;
 public class ProductController {
 
     private final ProductService service;
+    private final CategoryService categoryService;
 
-    public ProductController(ProductService service) {
+    public ProductController(ProductService service, CategoryService categoryService) {
         this.service = service;
+        this.categoryService = categoryService;
     }
 
     @GetMapping
@@ -30,6 +33,7 @@ public class ProductController {
     @GetMapping("/new")
     public String showCreateForm(Model model) {
         model.addAttribute("product", new Product());
+        model.addAttribute("categories", categoryService.findAll());
         return "products/form";
     }
 
@@ -37,6 +41,7 @@ public class ProductController {
     public String showEditForm(@PathVariable Long id, Model model, RedirectAttributes redirectAttributes) {
         try {
             model.addAttribute("product", service.findById(id));
+            model.addAttribute("categories", categoryService.findAll());
             return "products/form";
         } catch (NoSuchElementException e) {
             redirectAttributes.addFlashAttribute("error", e.getMessage());
@@ -47,12 +52,20 @@ public class ProductController {
     // Fail gracefully: captura erros de validação e retorna feedback ao usuário
     @PostMapping("/save")
     public String save(@Valid @ModelAttribute Product product, BindingResult result,
+                       @RequestParam(required = false) Long categoryId,
                        Model model, RedirectAttributes redirectAttributes) {
         if (result.hasErrors()) {
+            model.addAttribute("categories", categoryService.findAll());
             return "products/form";
         }
 
         try {
+            if (categoryId != null) {
+                product.setCategory(categoryService.findById(categoryId));
+            } else {
+                product.setCategory(null);
+            }
+
             if (product.getId() != null) {
                 service.update(product.getId(), product);
                 redirectAttributes.addFlashAttribute("success", "Produto atualizado com sucesso!");
@@ -63,9 +76,11 @@ public class ProductController {
             return "redirect:/products";
         } catch (IllegalArgumentException e) {
             model.addAttribute("error", e.getMessage());
+            model.addAttribute("categories", categoryService.findAll());
             return "products/form";
         } catch (Exception e) {
             model.addAttribute("error", "Erro inesperado ao salvar produto. Tente novamente.");
+            model.addAttribute("categories", categoryService.findAll());
             return "products/form";
         }
     }

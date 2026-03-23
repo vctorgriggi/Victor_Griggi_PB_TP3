@@ -1,10 +1,12 @@
-# TP3
+# TP3 → TP4
 
 ## Visão Geral
 
-O projeto implementa um sistema CRUD completo usando Java 21 com Spring Boot 3.2.5, interface web renderizada via Thymeleaf e uma suíte de testes que cobre desde validações unitárias até simulações de falha e interações no navegador.
+O projeto implementa um sistema CRUD integrado com dois módulos — **Produtos** e **Categorias** — usando Java 21 com Spring Boot 3.2.5, interface web renderizada via Thymeleaf e uma suíte de testes que cobre desde validações unitárias até simulações de falha, integração entre os módulos e interações no navegador.
 
-A escolha do stack não foi arbitrária: Spring Boot elimina grande parte da configuração manual, o H2 em memória dispensa a instalação de um banco externo para rodar os testes, e o Thymeleaf já escapa HTML por padrão — o que resolve uma classe inteira de vulnerabilidades XSS sem nenhum código adicional.
+No TP4, o sistema original de produtos foi refatorado e integrado com um novo módulo de categorias. A refatoração incluiu a criação de uma interface genérica `CrudService<T, ID>` para abstrair operações CRUD comuns, além da integração bidirecional entre os dois módulos (um produto pode pertencer a uma categoria; uma categoria não pode ser excluída enquanto tiver produtos vinculados).
+
+Uma esteira de CI foi configurada via GitHub Actions para automatizar build, testes e validação de cobertura.
 
 ---
 
@@ -18,6 +20,7 @@ A escolha do stack não foi arbitrária: Spring Boot elimina grande parte da con
 - **JUnit 5** + **Mockito** — testes unitários e de integração
 - **Selenium WebDriver** — testes de interface no Chrome headless
 - **JaCoCo** — relatório e enforcement de cobertura
+- **GitHub Actions** — CI automatizado
 
 ---
 
@@ -27,28 +30,51 @@ A escolha do stack não foi arbitrária: Spring Boot elimina grande parte da con
 src/
 ├── main/java/com/crud/
 │   ├── CrudApplication.java
-│   ├── model/Product.java
-│   ├── repository/ProductRepository.java
-│   ├── service/ProductService.java
+│   ├── model/
+│   │   ├── Product.java
+│   │   └── Category.java
+│   ├── repository/
+│   │   ├── ProductRepository.java
+│   │   └── CategoryRepository.java
+│   ├── service/
+│   │   ├── CrudService.java              # interface genérica reutilizável
+│   │   ├── ProductService.java
+│   │   └── CategoryService.java
 │   ├── controller/
 │   │   ├── ProductController.java
+│   │   ├── CategoryController.java
 │   │   └── HomeController.java
 │   └── exception/
 │       └── GlobalExceptionHandler.java
 ├── main/resources/
 │   ├── application.properties
-│   ├── templates/products/           # list.html, form.html
-│   ├── templates/error.html
+│   ├── templates/
+│   │   ├── fragments/header.html         # nav bar reutilizável
+│   │   ├── products/                     # list.html, form.html
+│   │   ├── categories/                   # list.html, form.html
+│   │   └── error.html
 │   └── static/css/style.css
 └── test/java/com/crud/
     ├── CrudApplicationTest.java
-    ├── model/ProductTest.java
-    ├── service/ProductServiceTest.java
-    ├── controller/ProductControllerTest.java
+    ├── model/
+    │   ├── ProductTest.java
+    │   └── CategoryTest.java
+    ├── service/
+    │   ├── ProductServiceTest.java
+    │   └── CategoryServiceTest.java
+    ├── controller/
+    │   ├── ProductControllerTest.java
+    │   └── CategoryControllerTest.java
+    ├── integration/
+    │   └── ProductCategoryIntegrationTest.java
     ├── exception/GlobalExceptionHandlerTest.java
     ├── selenium/ProductSeleniumTest.java
     ├── fuzz/ProductFuzzTest.java
-    └── failure/FailureSimulationTest.java
+    ├── failure/FailureSimulationTest.java
+    └── stress/StressTest.java
+
+.github/workflows/
+└── ci.yml                                # workflow de CI
 ```
 
 ---
@@ -74,78 +100,93 @@ mvn clean test jacoco:report
 
 ## Cobertura de Testes
 
-| Métrica      | Cobertura |
-|--------------|-----------|
-| Linhas       | 96,8%     |
-| Branches     | 100%      |
-| Instruções   | 97,9%     |
-
 O mínimo exigido era 85%. O JaCoCo está configurado para **falhar o build** caso a cobertura caia abaixo desse limiar, o que torna o requisito verificável automaticamente — não apenas declarativo.
 
 ---
 
-## Testes Implementados — 126 no total
+## Testes Implementados — 172 no total
 
-### Unitários (`ProductServiceTest`)
+### Unitários (`ProductServiceTest`, `CategoryServiceTest`)
 
-Cobrem todas as ramificações do service, incluindo os *null guards* que compõem a estratégia de *fail early*: nenhuma chamada chega ao repositório com dados inválidos ou nulos.
+Cobrem todas as ramificações dos services, incluindo os *null guards* que compõem a estratégia de *fail early*. O `CategoryServiceTest` também verifica a regra de integridade que impede exclusão de categorias com produtos vinculados.
 
-### Controller (`ProductControllerTest`)
+### Controller (`ProductControllerTest`, `CategoryControllerTest`)
 
-Usam MockMvc para testar os endpoints HTTP diretamente, sem subir um servidor real. Verificam redirecionamentos, mensagens flash e o comportamento do controller ao receber entradas inválidas.
+Usam MockMvc para testar os endpoints HTTP diretamente, sem subir um servidor real. Verificam redirecionamentos, mensagens flash e o comportamento dos controllers ao receber entradas inválidas.
+
+### Integração (`ProductCategoryIntegrationTest`)
+
+Verificam a comunicação entre os dois módulos: criação de produtos com e sem categoria, vínculo bidirecional, impedimento de exclusão de categoria com produtos, e os mesmos fluxos via HTTP.
 
 ### Selenium (`ProductSeleniumTest`)
 
-Executam o fluxo completo — criar, editar e excluir um produto — num Chrome headless. Também cobrem alertas de confirmação JavaScript e mensagens de erro exibidas na interface. Se o Chrome não estiver disponível na máquina, os testes são ignorados via `assumeTrue`, sem quebrar o build.
+Executam o fluxo completo — criar, editar e excluir um produto — num Chrome headless. Se o Chrome não estiver disponível na máquina, os testes são ignorados via `assumeTrue`, sem quebrar o build.
 
 ### Fuzz Testing (`ProductFuzzTest`)
 
-Testam sistematicamente entradas maliciosas ou inesperadas. Os resultados estão documentados na seção de vulnerabilidades abaixo.
+Testam sistematicamente entradas maliciosas ou inesperadas: SQL injection, XSS, strings aleatórias, valores extremos.
 
 ### Simulação de Falhas (`FailureSimulationTest`)
 
-Simulam condições adversas como falha de conexão com o banco (`DataAccessResourceFailureException`) e timeout de queries, verificando se o sistema responde de forma controlada em ambos os casos.
+Simulam condições adversas como falha de conexão com o banco e timeout de queries.
 
 ### Stress (`StressTest`)
 
-Criam 50 produtos sequencialmente, disparam 10 requisições simultâneas e listam 100 registros para verificar comportamento sob carga.
+Criam 50 produtos sequencialmente, disparam 10 requisições simultâneas e listam 100 registros.
+
+### Modelo (`ProductTest`, `CategoryTest`)
+
+Validam Bean Validation nas entidades com testes parametrizados.
 
 ---
 
-## Relatório de Vulnerabilidades
+## Refatoração — TP3 → TP4
 
-Os testes de fuzz cobriram os vetores de ataque mais comuns para aplicações web com formulários. Nenhum foi explorado com sucesso.
+### Interface genérica `CrudService<T, ID>`
 
-| Vetor | Payloads | Resultado |
-|---|---|---|
-| SQL Injection | 5 payloads (`'; DROP TABLE`, `' OR '1'='1`, `UNION SELECT`...) | **Mitigado.** JPA usa prepared statements; o payload é salvo como texto literal. |
-| XSS | 5 payloads (`<script>`, `<img onerror>`, `<svg onload>`...) | **Mitigado.** Thymeleaf escapa HTML com `th:text` por padrão. |
-| Null bytes | `\0\0\0` | **Tratado.** Sem crash ou comportamento anômalo. |
-| Unicode / Emoji | Japonês, emoji, acentuação latina | **Aceito.** Armazenado e exibido corretamente. |
-| Overflow de inteiro | `2147483648` (MAX_VALUE + 1) | **Rejeitado.** O binding falha antes de chegar ao banco. |
-| Valores numéricos inválidos | `NaN`, `Infinity`, `abc` como preço ou quantidade | **Rejeitados.** Binding falha; formulário retorna com erro. |
-| Strings longas | 1000+ caracteres | **Rejeitadas.** `@Size(max=100)` impede a persistência. |
+Abstrai as cinco operações CRUD (`findAll`, `findById`, `save`, `update`, `delete`) numa interface reutilizável. Ambos os services implementam essa interface, eliminando duplicação de contrato e permitindo polimorfismo.
 
-A proteção contra SQL Injection e XSS é estrutural — decorre da forma como o JPA e o Thymeleaf funcionam, não de filtros manuais. Isso é preferível a qualquer abordagem baseada em sanitização manual, que tende a ser incompleta.
+### Integração Product ↔ Category
+
+- `Product` tem um relacionamento `@ManyToOne` opcional com `Category`.
+- `CategoryService.delete()` verifica se existem produtos vinculados antes de permitir a exclusão — fail early aplicado à integridade referencial.
+- O formulário de produto exibe um dropdown com as categorias disponíveis.
+- A listagem de produtos mostra a categoria associada.
+
+### Fragment Thymeleaf reutilizável
+
+A barra de navegação (`fragments/header.html`) é compartilhada entre todas as páginas via `th:replace`, evitando duplicação de HTML.
+
+---
+
+## GitHub Actions — CI
+
+O workflow `.github/workflows/ci.yml` automatiza:
+- Build do projeto com Maven
+- Execução de todos os testes
+- Validação de cobertura via JaCoCo (mínimo 85%)
+- Upload do relatório de cobertura como artefato
+
+**Triggers:** `push` e `pull_request` na branch `main`, além de `workflow_dispatch` para execução manual.
+
+O runner utilizado é `ubuntu-latest` (hospedado pelo GitHub), com Java 21 (Temurin) configurado via `actions/setup-java@v4`.
 
 ---
 
 ## Fail Early e Fail Gracefully
 
-Duas estratégias complementares organizam o tratamento de erros na aplicação.
+**Fail Early** — entradas inválidas são rejeitadas o mais cedo possível. O `@Valid` no controller barra dados que não atendem às constraints da entidade. Nos services, *null guards* rejeitam objetos nulos antes de qualquer acesso ao repositório. No `CategoryService`, a verificação de produtos vinculados impede exclusão indevida.
 
-**Fail Early** significa rejeitar entradas inválidas o mais cedo possível, antes de qualquer processamento custoso. No controller, o `@Valid` barra dados que não atendem às constraints da entidade. No service, *null guards* rejeitam objetos nulos antes de qualquer acesso ao repositório.
-
-**Fail Gracefully** trata os erros que inevitavelmente chegam até o sistema — exceções de banco, timeouts, estados inesperados — e os converte em respostas compreensíveis para o usuário. O `GlobalExceptionHandler` centraliza esse tratamento: stack traces nunca são expostos, e a página de erro genérica exibe apenas "Ocorreu um erro inesperado".
-
-As duas estratégias não competem entre si; operam em camadas diferentes da aplicação.
+**Fail Gracefully** — exceções que chegam ao sistema são capturadas pelo `GlobalExceptionHandler` e convertidas em mensagens compreensíveis. Stack traces nunca são expostos.
 
 ---
 
 ## Decisões de Projeto e Premissas
 
-**Entidade escolhida:** O enunciado não especificava qual entidade gerenciar. Foi escolhido *Produto* (nome, descrição, preço, quantidade) por ser um exemplo direto e sem ambiguidades para demonstrar as operações CRUD.
+**Segunda entidade:** O módulo de categorias foi escolhido como segundo sistema por ter relação direta com produtos e demonstrar integração real — restrição de exclusão, dropdown no formulário, coluna na listagem.
 
-**H2 em memória:** Elimina dependência de banco externo para rodar a aplicação e os testes. A consequência é que os dados são perdidos ao reiniciar — aceitável para um contexto acadêmico.
+**Categoria opcional:** O vínculo entre produto e categoria é nullable para manter compatibilidade com dados existentes e não forçar categorização.
+
+**H2 em memória:** Elimina dependência de banco externo. Dados são perdidos ao reiniciar — aceitável para contexto acadêmico.
 
 **Idioma:** Interface e mensagens de erro em português brasileiro; código-fonte em inglês, seguindo a convenção Java.

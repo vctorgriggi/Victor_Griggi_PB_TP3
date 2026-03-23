@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<nav th:fragment="nav" class="navbar navbar-expand-sm navbar-dark bg-dark">
+    <div class="container">
+        <a class="navbar-brand" th:href="@{/products}">Sistema CRUD</a>
+        <div class="navbar-nav">
+            <a class="nav-link" th:href="@{/products}">Produtos</a>
+            <a class="nav-link" th:href="@{/categories}">Categorias</a>
+        </div>
+    </div>
+</nav>
+</html>

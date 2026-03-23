@@ -9,6 +9,7 @@
     <link th:href="@{/css/style.css}" rel="stylesheet">
 </head>
 <body>
+<nav th:replace="~{fragments/header :: nav}"></nav>
 <div class="container mt-4">
     <div class="alert alert-danger" role="alert">
         <h2 th:text="${errorTitle} ?: 'Erro'" id="error-title"></h2>

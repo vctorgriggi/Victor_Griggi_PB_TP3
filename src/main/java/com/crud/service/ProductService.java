@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 
 @Service
-public class ProductService {
+public class ProductService implements CrudService<Product, Long> {
 
     private final ProductRepository repository;
 
@@ -16,10 +16,12 @@ public class ProductService {
         this.repository = repository;
     }
 
+    @Override
     public List<Product> findAll() {
         return repository.findAll();
     }
 
+    @Override
     public Product findById(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("ID não pode ser nulo");
@@ -29,6 +31,7 @@ public class ProductService {
     }
 
     // Fail early: rejeita objeto nulo antes de acessar o repositório
+    @Override
     public Product save(Product product) {
         if (product == null) {
             throw new IllegalArgumentException("Produto não pode ser nulo");
@@ -36,6 +39,7 @@ public class ProductService {
         return repository.save(product);
     }
 
+    @Override
     public Product update(Long id, Product updatedProduct) {
         if (id == null) {
             throw new IllegalArgumentException("ID não pode ser nulo");
@@ -49,9 +53,11 @@ public class ProductService {
         existing.setDescription(updatedProduct.getDescription());
         existing.setPrice(updatedProduct.getPrice());
         existing.setQuantity(updatedProduct.getQuantity());
+        existing.setCategory(updatedProduct.getCategory());
         return repository.save(existing);
     }
 
+    @Override
     public void delete(Long id) {
         if (id == null) {
             throw new IllegalArgumentException("ID não pode ser nulo");

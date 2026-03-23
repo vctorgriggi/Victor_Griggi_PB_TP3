@@ -28,6 +28,10 @@ public class Product {
     @Min(value = 0, message = "Quantidade não pode ser negativa")
     private Integer quantity;
 
+    @ManyToOne
+    @JoinColumn(name = "category_id")
+    private Category category;
+
     public Product() {}
 
     public Product(String name, String description, BigDecimal price, Integer quantity) {
@@ -51,4 +55,7 @@ public class Product {
 
     public Integer getQuantity() { return quantity; }
     public void setQuantity(Integer quantity) { this.quantity = quantity; }
+
+    public Category getCategory() { return category; }
+    public void setCategory(Category category) { this.category = category; }
 }
