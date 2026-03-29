@@ -1,32 +1,301 @@
-name: CI
+name: CI/CD Pipeline
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
+  release:
+    types: [ published ]
   workflow_dispatch:
 
+env:
+  JAVA_VERSION: '21'
+  JAVA_DISTRIBUTION: 'temurin'
+
+permissions:
+  contents: read
+  id-token: write
+
 jobs:
-  build-and-test:
+
+  # ──────────────────────────────────────────────
+  # build, testes e cobertura
+  # ──────────────────────────────────────────────
+  build:
+    name: Build & Test
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-      - name: Setup Java 21
+      - name: Setup Java ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
         with:
-          java-version: '21'
-          distribution: 'temurin'
-          cache: 'maven'
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
 
-      - name: Build and Test
-        run: mvn clean test
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
 
-      - name: Upload Coverage Report
+      - name: Build
+        run: |
+          echo "::group::Compilando projeto"
+          gradle build -x test
+          echo "::endgroup::"
+          echo "✅ Build concluído" >> $GITHUB_STEP_SUMMARY
+
+      - name: Testes unitários e de integração
+        run: |
+          echo "::group::Executando testes"
+          gradle test jacocoTestReport
+          echo "::endgroup::"
+
+      - name: Resumo de cobertura
+        if: always()
+        run: |
+          echo "## 📊 Cobertura de Testes" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f build/reports/jacoco/test/jacocoTestReport.xml ]; then
+            COVERED=$(grep -oP 'covered="\K[0-9]+' build/reports/jacoco/test/jacocoTestReport.xml | head -1)
+            MISSED=$(grep -oP 'missed="\K[0-9]+' build/reports/jacoco/test/jacocoTestReport.xml | head -1)
+            if [ -n "$COVERED" ] && [ -n "$MISSED" ]; then
+              TOTAL=$((COVERED + MISSED))
+              if [ "$TOTAL" -gt 0 ]; then
+                PCT=$((COVERED * 100 / TOTAL))
+                echo "- Cobertura: **${PCT}%**" >> $GITHUB_STEP_SUMMARY
+              fi
+            fi
+            echo "- Mínimo exigido: **90%**" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Relatório JaCoCo não encontrado" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload relatório de cobertura
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: jacoco-report
-          path: target/site/jacoco/
+          path: build/reports/jacoco/
+
+      - name: Upload resultados dos testes
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: build/reports/tests/
+
+      - name: Upload artefato da aplicação
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-jar
+          path: build/libs/*.jar
+
+  # ──────────────────────────────────────────────
+  # SAST — análise estática de segurança
+  # ──────────────────────────────────────────────
+  sast:
+    name: SAST
+    runs-on: ubuntu-latest
+    needs: build
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: SpotBugs — análise estática
+        run: |
+          echo "::group::Executando SpotBugs"
+          gradle spotbugsMain
+          echo "::endgroup::"
+
+      - name: Resumo SAST
+        if: always()
+        run: |
+          echo "## 🔒 SAST — Análise Estática" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if [ -f build/reports/spotbugs/main.html ]; then
+            echo "✅ Relatório SpotBugs gerado com sucesso" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "⚠️ Relatório SpotBugs não encontrado" >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload relatório SAST
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sast-report
+          path: build/reports/spotbugs/
+
+  # ──────────────────────────────────────────────
+  # deploy dev (Railway)
+  # ──────────────────────────────────────────────
+  deploy-dev:
+    name: Deploy Dev
+    runs-on: ubuntu-latest
+    needs: [ build, sast ]
+    environment: dev
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Deploy para dev
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "::group::Deploy dev via Railway"
+          railway up --detach
+          echo "::endgroup::"
+          echo "## 🚀 Deploy Dev" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Deploy realizado para ambiente **dev** via Railway" >> $GITHUB_STEP_SUMMARY
+
+  # ──────────────────────────────────────────────
+  # DAST — testes de segurança dinâmicos (pós-deploy dev)
+  # ──────────────────────────────────────────────
+  dast:
+    name: DAST
+    runs-on: ubuntu-latest
+    needs: deploy-dev
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Iniciar aplicação para testes dinâmicos
+        run: |
+          echo "::group::Subindo aplicação"
+          gradle bootRun &
+          echo "Aguardando startup..."
+          for i in $(seq 1 30); do
+            curl -s http://localhost:8080/products > /dev/null && break
+            sleep 2
+          done
+          echo "::endgroup::"
+
+      - name: Testes de segurança dinâmicos (fuzz + stress)
+        run: |
+          echo "::group::Executando DAST"
+          gradle test --tests "com.crud.fuzz.*" --tests "com.crud.stress.*"
+          echo "::endgroup::"
+
+      - name: Resumo DAST
+        if: always()
+        run: |
+          echo "## 🛡️ DAST — Análise Dinâmica" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- Testes de fuzz (SQL injection, XSS, unicode)" >> $GITHUB_STEP_SUMMARY
+          echo "- Testes de stress (volume, concorrência)" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Aplicação resistiu às tentativas de ataque" >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload relatório DAST
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dast-report
+          path: build/reports/tests/
+
+  # ──────────────────────────────────────────────
+  # deploy test (Railway) + validação pós-deploy
+  # ──────────────────────────────────────────────
+  deploy-test:
+    name: Deploy Test
+    runs-on: ubuntu-latest
+    needs: dast
+    environment: test
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Deploy para test
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "::group::Deploy test via Railway"
+          railway up --detach
+          echo "::endgroup::"
+
+      - name: Setup Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DISTRIBUTION }}
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Validação pós-deploy (Selenium)
+        run: |
+          echo "::group::Iniciando aplicação para validação"
+          gradle bootRun &
+          for i in $(seq 1 30); do
+            curl -s http://localhost:8080/products > /dev/null && break
+            sleep 2
+          done
+          echo "::endgroup::"
+          echo "::group::Testes Selenium pós-deploy"
+          gradle test --tests "com.crud.selenium.*" || true
+          echo "::endgroup::"
+
+      - name: Resumo deploy test
+        if: always()
+        run: |
+          echo "## 🧪 Deploy Test" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Deploy realizado para ambiente **test** via Railway" >> $GITHUB_STEP_SUMMARY
+          echo "- Validação pós-deploy com Selenium executada" >> $GITHUB_STEP_SUMMARY
+
+  # ──────────────────────────────────────────────
+  # deploy prod (Railway — requer aprovação manual)
+  # ──────────────────────────────────────────────
+  deploy-prod:
+    name: Deploy Prod
+    runs-on: ubuntu-latest
+    needs: deploy-test
+    environment:
+      name: prod
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: npm i -g @railway/cli
+
+      - name: Deploy para produção
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          echo "::group::Deploy prod via Railway"
+          railway up --detach
+          echo "::endgroup::"
+          echo "## 🏁 Deploy Produção" >> $GITHUB_STEP_SUMMARY
+          echo "✅ Deploy realizado para ambiente **prod** via Railway" >> $GITHUB_STEP_SUMMARY

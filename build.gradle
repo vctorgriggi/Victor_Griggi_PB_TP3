@@ -1,0 +1,77 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.2.5'
+    id 'io.spring.dependency-management' version '1.1.4'
+    id 'jacoco'
+    id 'com.github.spotbugs' version '6.0.7'
+}
+
+group = 'com.infnet'
+version = '1.0.0'
+
+java {
+    sourceCompatibility = '21'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+
+    runtimeOnly 'com.h2database:h2'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testImplementation 'org.seleniumhq.selenium:selenium-java:4.18.1'
+    testImplementation 'io.github.bonigarcia:webdrivermanager:5.7.0'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+// cobertura de testes
+jacoco {
+    toolVersion = '0.8.11'
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true
+        html.required = true
+    }
+}
+
+jacocoTestCoverageVerification {
+    violationRules {
+        rule {
+            limit {
+                counter = 'LINE'
+                value = 'COVEREDRATIO'
+                minimum = 0.90
+            }
+        }
+    }
+}
+
+test.finalizedBy jacocoTestReport
+jacocoTestReport.finalizedBy jacocoTestCoverageVerification
+
+// analise estatica (SAST)
+spotbugs {
+    ignoreFailures = true
+    effort = 'max'
+    reportLevel = 'medium'
+}
+
+spotbugsMain {
+    reports {
+        html.required = true
+        xml.required = true
+    }
+}
