@@ -206,7 +206,7 @@ jobs:
       - name: Testes de segurança dinâmicos (fuzz + stress)
         run: |
           echo "::group::Executando DAST"
-          gradle test --tests "com.crud.fuzz.*" --tests "com.crud.stress.*"
+          gradle test --tests "com.crud.fuzz.*" --tests "com.crud.stress.*" -x jacocoTestCoverageVerification
           echo "::endgroup::"
 
       - name: Resumo DAST
@@ -270,7 +270,7 @@ jobs:
           done
           echo "::endgroup::"
           echo "::group::Testes Selenium pós-deploy"
-          gradle test --tests "com.crud.selenium.*" || true
+          gradle test --tests "com.crud.selenium.*" -x jacocoTestCoverageVerification || true
           echo "::endgroup::"
 
       - name: Resumo deploy test
