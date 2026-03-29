@@ -45,14 +45,14 @@ jobs:
       - name: Build
         run: |
           echo "::group::Compilando projeto"
-          gradle build -x test
+          ./gradlew build -x test
           echo "::endgroup::"
           echo "✅ Build concluído" >> $GITHUB_STEP_SUMMARY
 
       - name: Testes unitários e de integração
         run: |
           echo "::group::Executando testes"
-          gradle test jacocoTestReport
+          ./gradlew test jacocoTestReport
           echo "::endgroup::"
 
       - name: Resumo de cobertura
@@ -121,7 +121,7 @@ jobs:
       - name: SpotBugs — análise estática
         run: |
           echo "::group::Executando SpotBugs"
-          gradle spotbugsMain
+          ./gradlew spotbugsMain
           echo "::endgroup::"
 
       - name: Resumo SAST
@@ -195,7 +195,7 @@ jobs:
       - name: Iniciar aplicação para testes dinâmicos
         run: |
           echo "::group::Subindo aplicação"
-          gradle bootRun &
+          ./gradlew bootRun &
           echo "Aguardando startup..."
           for i in $(seq 1 30); do
             curl -s http://localhost:8080/products > /dev/null && break
@@ -206,7 +206,7 @@ jobs:
       - name: Testes de segurança dinâmicos (fuzz + stress)
         run: |
           echo "::group::Executando DAST"
-          gradle test --tests "com.crud.fuzz.*" --tests "com.crud.stress.*" -x jacocoTestCoverageVerification
+          ./gradlew test --tests "com.crud.fuzz.*" --tests "com.crud.stress.*" -x jacocoTestCoverageVerification
           echo "::endgroup::"
 
       - name: Resumo DAST
@@ -263,14 +263,14 @@ jobs:
       - name: Validação pós-deploy (Selenium)
         run: |
           echo "::group::Iniciando aplicação para validação"
-          gradle bootRun &
+          ./gradlew bootRun &
           for i in $(seq 1 30); do
             curl -s http://localhost:8080/products > /dev/null && break
             sleep 2
           done
           echo "::endgroup::"
           echo "::group::Testes Selenium pós-deploy"
-          gradle test --tests "com.crud.selenium.*" -x jacocoTestCoverageVerification || true
+          ./gradlew test --tests "com.crud.selenium.*" -x jacocoTestCoverageVerification
           echo "::endgroup::"
 
       - name: Resumo deploy test
