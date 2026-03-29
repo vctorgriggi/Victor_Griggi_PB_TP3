@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 
 @Service
-public class ProductService implements CrudService<Product, Long> {
+public class ProductService implements QueryService<Product, Long>, CommandService<Product, Long> {
 
     private final ProductRepository repository;
 
@@ -30,7 +30,6 @@ public class ProductService implements CrudService<Product, Long> {
                 .orElseThrow(() -> new NoSuchElementException("Produto não encontrado com ID: " + id));
     }
 
-    // Fail early: rejeita objeto nulo antes de acessar o repositório
     @Override
     public Product save(Product product) {
         if (product == null) {

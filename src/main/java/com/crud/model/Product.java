@@ -6,18 +6,7 @@ import java.math.BigDecimal;
 
 @Entity
 @Table(name = "products")
-public class Product {
-
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
-
-    @NotBlank(message = "Nome é obrigatório")
-    @Size(max = 100, message = "Nome deve ter no máximo 100 caracteres")
-    private String name;
-
-    @Size(max = 500, message = "Descrição deve ter no máximo 500 caracteres")
-    private String description;
+public class Product extends BaseEntity {
 
     @NotNull(message = "Preço é obrigatório")
     @Positive(message = "Preço deve ser positivo")
@@ -35,20 +24,10 @@ public class Product {
     public Product() {}
 
     public Product(String name, String description, BigDecimal price, Integer quantity) {
-        this.name = name;
-        this.description = description;
+        super(name, description);
         this.price = price;
         this.quantity = quantity;
     }
-
-    public Long getId() { return id; }
-    public void setId(Long id) { this.id = id; }
-
-    public String getName() { return name; }
-    public void setName(String name) { this.name = name; }
-
-    public String getDescription() { return description; }
-    public void setDescription(String description) { this.description = description; }
 
     public BigDecimal getPrice() { return price; }
     public void setPrice(BigDecimal price) { this.price = price; }

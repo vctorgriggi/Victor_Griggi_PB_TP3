@@ -74,9 +74,7 @@ public class CategoryController {
         try {
             service.delete(id);
             redirectAttributes.addFlashAttribute("success", "Categoria excluída com sucesso!");
-        } catch (NoSuchElementException e) {
-            redirectAttributes.addFlashAttribute("error", e.getMessage());
-        } catch (IllegalStateException e) {
+        } catch (NoSuchElementException | IllegalStateException e) {
             redirectAttributes.addFlashAttribute("error", e.getMessage());
         } catch (Exception e) {
             redirectAttributes.addFlashAttribute("error", "Erro inesperado ao excluir categoria.");

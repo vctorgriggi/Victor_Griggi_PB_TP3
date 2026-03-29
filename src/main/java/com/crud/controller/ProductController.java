@@ -49,7 +49,6 @@ public class ProductController {
         }
     }
 
-    // Fail gracefully: captura erros de validação e retorna feedback ao usuário
     @PostMapping("/save")
     public String save(@Valid @ModelAttribute Product product, BindingResult result,
                        @RequestParam(required = false) Long categoryId,
@@ -60,11 +59,7 @@ public class ProductController {
         }
 
         try {
-            if (categoryId != null) {
-                product.setCategory(categoryService.findById(categoryId));
-            } else {
-                product.setCategory(null);
-            }
+            product.setCategory(categoryId != null ? categoryService.findById(categoryId) : null);
 
             if (product.getId() != null) {
                 service.update(product.getId(), product);
@@ -98,7 +93,6 @@ public class ProductController {
         return "redirect:/products";
     }
 
-    // Redireciona raiz para lista de produtos
     @GetMapping("/")
     public String redirectToList() {
         return "redirect:/products";

@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.NoSuchElementException;
 
 @Service
-public class CategoryService implements CrudService<Category, Long> {
+public class CategoryService implements QueryService<Category, Long>, CommandService<Category, Long> {
 
     private final CategoryRepository repository;
     private final ProductRepository productRepository;
@@ -33,7 +33,6 @@ public class CategoryService implements CrudService<Category, Long> {
                 .orElseThrow(() -> new NoSuchElementException("Categoria não encontrada com ID: " + id));
     }
 
-    // Fail early: rejeita objeto nulo antes de acessar o repositório
     @Override
     public Category save(Category category) {
         if (category == null) {
