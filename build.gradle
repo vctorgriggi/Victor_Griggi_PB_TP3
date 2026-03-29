@@ -64,9 +64,9 @@ jacocoTestReport.finalizedBy jacocoTestCoverageVerification
 
 // analise estatica (SAST)
 spotbugs {
-    ignoreFailures = true
-    effort = com.github.spotbugs.snom.Effort.MAX
-    reportLevel = com.github.spotbugs.snom.Confidence.MEDIUM
+    ignoreFailures.set(true)
+    effort.set(com.github.spotbugs.snom.Effort.valueOf('MAX'))
+    reportLevel.set(com.github.spotbugs.snom.Confidence.valueOf('MEDIUM'))
 }
 
 spotbugsMain {
