@@ -1,124 +1,167 @@
-# TP4
+# TP5
+
+![CI/CD Pipeline](https://github.com/Victor-Griggi/PB-TP3/actions/workflows/ci.yml/badge.svg)
+![Java](https://img.shields.io/badge/Java-21-blue)
+![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-green)
+![Coverage](https://img.shields.io/badge/coverage-%3E90%25-brightgreen)
 
 ## Visão Geral
 
-Este TP dá continuidade ao sistema CRUD de produtos desenvolvido no TP3. O objetivo agora foi refatorar o código existente, integrar um segundo módulo (Categorias) e configurar uma esteira de CI via GitHub Actions.
+Este TP finaliza o projeto com refatoração, automação completa de CI/CD e deploy multi-ambiente. Dá continuidade ao TP4, que integrou Produtos e Categorias com interface genérica e GitHub Actions.
 
-A ideia central da refatoração foi extrair uma interface genérica `CrudService<T, ID>` que ambos os módulos implementam. Isso evita duplicação de contrato e deixa claro que qualquer entidade nova no futuro segue o mesmo padrão — basta implementar a interface.
-
-Para a integração, a escolha de Categorias não foi aleatória: é a relação mais natural com Produtos e permite demonstrar vínculo real entre os dois sistemas — um produto pode pertencer a uma categoria, e uma categoria não pode ser excluída enquanto tiver produtos associados. Essa restrição é validada no service antes de chegar ao banco, seguindo a mesma estratégia de fail early do TP3.
+O foco foi:
+- Refatorar o código promovendo imutabilidade e polimorfismo via hierarquia de classes
+- Migrar o build para Gradle com análise estática (SpotBugs) integrada
+- Configurar pipeline CI/CD completo com SAST, DAST, deploy em três ambientes e aprovação manual para produção
+- Adicionar logs personalizados e resumos em Markdown nos workflows
 
 ---
 
 ## Tecnologias
 
 - **Java 21** + **Spring Boot 3.2.5**
+- **Gradle 8.5** — build e gestão de dependências
+- **Maven** — build alternativo (mantido para compatibilidade)
 - **Thymeleaf** — renderização server-side
 - **Spring Data JPA** + **H2** — persistência em memória
 - **Bean Validation** — validação declarativa
 - **Bootstrap 5** — interface responsiva via CDN
 - **JUnit 5** + **Mockito** — testes unitários e de integração
 - **Selenium WebDriver** — testes de interface (Chrome headless)
-- **JaCoCo** — cobertura de testes com enforcement no build
-- **GitHub Actions** — CI automatizado
+- **JaCoCo** — cobertura de testes (mínimo 90%)
+- **SpotBugs** — análise estática de segurança (SAST)
+- **GitHub Actions** — CI/CD com deploy multi-ambiente
 
 ---
 
-## Estrutura do Projeto
+## Arquitetura
 
 ```
-src/
-├── main/java/com/crud/
-│   ├── CrudApplication.java
-│   ├── model/
-│   │   ├── Product.java
-│   │   └── Category.java
-│   ├── repository/
-│   │   ├── ProductRepository.java
-│   │   └── CategoryRepository.java
-│   ├── service/
-│   │   ├── CrudService.java              # interface genérica
-│   │   ├── ProductService.java
-│   │   └── CategoryService.java
-│   ├── controller/
-│   │   ├── ProductController.java
-│   │   ├── CategoryController.java
-│   │   └── HomeController.java
-│   └── exception/
-│       └── GlobalExceptionHandler.java
-├── main/resources/
-│   ├── application.properties
-│   ├── templates/
-│   │   ├── fragments/header.html         # nav compartilhada
-│   │   ├── products/                     # list.html, form.html
-│   │   ├── categories/                   # list.html, form.html
-│   │   └── error.html
-│   └── static/css/style.css
-└── test/java/com/crud/
-    ├── CrudApplicationTest.java
-    ├── model/ProductTest.java, CategoryTest.java
-    ├── service/ProductServiceTest.java, CategoryServiceTest.java
-    ├── controller/ProductControllerTest.java, CategoryControllerTest.java
-    ├── integration/ProductCategoryIntegrationTest.java
-    ├── exception/GlobalExceptionHandlerTest.java
-    ├── selenium/ProductSeleniumTest.java
-    ├── fuzz/ProductFuzzTest.java
-    ├── failure/FailureSimulationTest.java
-    └── stress/StressTest.java
-
-.github/workflows/ci.yml
+src/main/java/com/crud/
+├── CrudApplication.java
+├── model/
+│   ├── BaseEntity.java              # superclasse com campos comuns
+│   ├── Product.java                 # extends BaseEntity
+│   └── Category.java                # extends BaseEntity
+├── repository/
+│   ├── ProductRepository.java
+│   └── CategoryRepository.java
+├── service/
+│   ├── QueryService.java            # interface de consulta (CQS)
+│   ├── CommandService.java          # interface de comando (CQS)
+│   ├── ProductService.java
+│   └── CategoryService.java
+├── controller/
+│   ├── ProductController.java
+│   ├── CategoryController.java
+│   └── HomeController.java
+└── exception/
+    └── GlobalExceptionHandler.java
 ```
+
+### Camadas
+
+**Model → Repository → Service → Controller**
+
+A separação é estrita: controllers nunca acessam repositórios diretamente, e services encapsulam toda a lógica de negócio.
+
+### Hierarquia de Classes (BaseEntity)
+
+`Product` e `Category` compartilham `id`, `name` e `description`. Esses campos foram extraídos para `BaseEntity` (`@MappedSuperclass`), eliminando duplicação e organizando a hierarquia conforme o princípio de superclasse/subclasse. Cada entidade herda os campos comuns e adiciona os seus próprios.
+
+### Command-Query Separation
+
+A interface genérica `CrudService<T, ID>` do TP4 foi substituída por duas interfaces:
+- **`QueryService<T, ID>`** — `findAll()`, `findById()` (consultas puras, sem efeitos colaterais)
+- **`CommandService<T, ID>`** — `save()`, `update()`, `delete()` (operações de escrita)
+
+Essa separação aplica o princípio da imutabilidade: métodos de leitura ficam isolados dos que modificam estado.
+
+---
+
+## Pipeline CI/CD
+
+O workflow `.github/workflows/ci.yml` roda em push, PR, release e dispatch manual.
+
+```
+build → sast → deploy-dev → dast → deploy-test → deploy-prod
+                                                    ↑
+                                              aprovação manual
+```
+
+### Jobs
+
+| Job | O que faz |
+|---|---|
+| **Build & Test** | Compila com Gradle, roda testes, gera cobertura JaCoCo, sobe artefatos |
+| **SAST** | Análise estática com SpotBugs (detecta bugs, vulnerabilidades, code smells) |
+| **Deploy Dev** | Deploya artefato no ambiente dev |
+| **DAST** | Testes dinâmicos de segurança (fuzz, SQL injection, XSS, stress) contra a aplicação rodando |
+| **Deploy Test** | Deploya no ambiente test + validação pós-deploy com Selenium |
+| **Deploy Prod** | Deploy em produção — requer aprovação manual, só roda em release ou dispatch |
+
+### Gatilhos
+
+- `push` na main → roda build, testes, SAST, deploy dev/test
+- `pull_request` na main → roda build e SAST
+- `release` → roda pipeline completo incluindo deploy prod
+- `workflow_dispatch` → execução manual com deploy prod
+
+### Logs e Resumos
+
+Cada job produz:
+- **Logs agrupados** (`::group::`) para facilitar navegação no GitHub Actions
+- **Resumo em Markdown** (`$GITHUB_STEP_SUMMARY`) com status e métricas visíveis direto na interface
+- **Artefatos** — relatórios JaCoCo, SpotBugs, resultados de testes e JAR da aplicação
+
+### Ambientes e Proteções (Railway)
+
+O deploy é feito no **Railway** via CLI nos workflows. O `RAILWAY_TOKEN` fica nos secrets do repositório.
+
+| Ambiente | Quando deploya | Proteção |
+|---|---|---|
+| `dev` | Merge na main | Nenhuma (automático) |
+| `test` | Após DAST passar | Nenhuma (automático) |
+| `prod` | Release ou dispatch manual | Aprovação manual obrigatória |
+
+### Segurança
+
+- **OIDC** habilitado via `permissions: id-token: write` para integração segura com provedores de nuvem
+- **Secrets:** `RAILWAY_TOKEN` armazenado nos secrets do GitHub, nunca exposto nos logs
+- **Env vars** gerenciados via `env:` no workflow e variáveis de ambiente do Railway
+- A aplicação lê a porta via `${PORT:8080}` — Railway injeta a porta automaticamente
 
 ---
 
 ## Como Executar
 
-**Pré-requisitos:** Java 21+, Maven 3.8+ e Google Chrome (só para Selenium).
+**Pré-requisitos:** Java 21+, Gradle 8.5+ (ou Maven 3.8+), Google Chrome (opcional, para Selenium).
 
 ```bash
-# Iniciar a aplicação
+# Iniciar a aplicação (Gradle)
+gradle bootRun
+# Ou com Maven
 mvn spring-boot:run
+
 # Acesse: http://localhost:8080/products
 
 # Executar todos os testes
+gradle test
+# Ou com Maven
 mvn clean test
 
 # Gerar relatório de cobertura
-mvn clean test jacoco:report
-# Relatório em: target/site/jacoco/index.html
+gradle test jacocoTestReport
+# Relatório em: build/reports/jacoco/test/html/index.html
+
+# Análise estática (SAST)
+gradle spotbugsMain
+# Relatório em: build/reports/spotbugs/main.html
 ```
 
 ---
 
-## O que mudou do TP3 para o TP4
-
-### Refatoração: interface genérica
-
-O TP3 tinha apenas o `ProductService` com os métodos CRUD soltos. Para o TP4, criei a interface `CrudService<T, ID>` com as cinco operações (`findAll`, `findById`, `save`, `update`, `delete`). Tanto o `ProductService` quanto o novo `CategoryService` implementam essa interface. Na prática, isso significa que o contrato é o mesmo para qualquer entidade — se amanhã precisar de um terceiro módulo, a estrutura já está pronta.
-
-### Integração: Product ↔ Category
-
-O `Product` ganhou um campo `@ManyToOne` opcional apontando para `Category`. Opcional porque não faz sentido forçar categorização — um produto pode existir sem categoria, e os dados do TP3 continuam válidos.
-
-No formulário de produto, um dropdown lista as categorias disponíveis. Na listagem, uma coluna mostra a categoria de cada produto (ou "-" quando não tem).
-
-A parte mais interessante da integração é a restrição de exclusão: o `CategoryService.delete()` consulta o `ProductRepository.existsByCategoryId()` antes de deletar. Se existem produtos vinculados, a operação é barrada com uma mensagem clara. É fail early aplicado à integridade referencial — o erro acontece antes de tocar no banco.
-
-### Fragment Thymeleaf
-
-Todas as páginas agora compartilham uma barra de navegação via `th:replace` de `fragments/header.html`. Antes, cada template era uma ilha. Agora existe navegação entre Produtos e Categorias sem precisar digitar URL.
-
-### GitHub Actions
-
-O workflow `.github/workflows/ci.yml` roda em todo push e PR na main. Usa `ubuntu-latest` com Java 21 (Temurin via `actions/setup-java@v4`), executa `mvn clean test` (que já inclui o check do JaCoCo) e sobe o relatório de cobertura como artefato. Também aceita `workflow_dispatch` para execução manual.
-
-O runner é hospedado pelo GitHub — não configurei auto-hospedado porque para um projeto desse porte não faz sentido manter infraestrutura própria.
-
----
-
 ## Testes — 172 no total
-
-Os 126 testes do TP3 continuam passando. Os 46 novos cobrem o módulo de categorias e a integração entre os dois sistemas.
 
 | Categoria | Arquivo | O que cobre |
 |---|---|---|
@@ -128,7 +171,7 @@ Os 126 testes do TP3 continuam passando. Os 46 novos cobrem o módulo de categor
 | Controller | `CategoryControllerTest` | Mesma cobertura para o módulo de categorias |
 | Integração | `ProductCategoryIntegrationTest` | Vínculo entre os dois módulos via service e via HTTP |
 | Selenium | `ProductSeleniumTest` | Fluxo completo no browser (Chrome headless) |
-| Fuzz | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
+| Fuzz/DAST | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
 | Falhas | `FailureSimulationTest` | Banco indisponível, timeout, fail early/gracefully |
 | Stress | `StressTest` | Volume, concorrência, listagem pesada |
 | Modelo | `ProductTest`, `CategoryTest` | Bean Validation nas entidades |
@@ -137,32 +180,70 @@ Os 126 testes do TP3 continuam passando. Os 46 novos cobrem o módulo de categor
 
 ### Cobertura (JaCoCo)
 
-| Métrica | Cobertura |
-|---|---|
-| Instruções | 98% |
-| Branches | 100% |
-| Linhas | 98% (178 de 181) |
+O mínimo exigido é **90%**. O JaCoCo está configurado para reprovar o build se cair abaixo disso — tanto no Gradle quanto no Maven. O relatório é gerado automaticamente e enviado como artefato no pipeline de CI.
 
-O mínimo exigido era 85%. O JaCoCo está configurado pra reprovar o build se cair abaixo disso — então não é uma métrica que eu olho manualmente, é um gate automático. O relatório completo é gerado com `mvn clean test jacoco:report` (fica em `target/site/jacoco/index.html`) e também é enviado como artefato no workflow de CI.
+### Estratégias de Teste
+
+**Testes unitários:** Mockito para isolar services dos repositórios. Cada método CRUD tem cobertura de cenários válidos, inválidos e edge cases (null, inexistente).
+
+**Testes de controller:** MockMvc para testar endpoints HTTP sem subir o servidor. Validação de status codes, views, model attributes e flash messages.
+
+**Testes de integração:** `@SpringBootTest` com banco H2 real. Verifica que a comunicação Product↔Category funciona end-to-end via service e via HTTP.
+
+**Testes Selenium (pós-deploy):** Chrome headless com `@Order` para simular fluxo do usuário. Ignorados automaticamente se Chrome não está disponível (`assumeTrue`).
+
+**Testes de segurança (DAST):** Fuzz testing com payloads de SQL injection, XSS e caracteres especiais. Stress testing com volume e concorrência. Executados contra a aplicação rodando no pipeline.
+
+**Testes de resiliência:** Simulação de falhas de banco (DataAccessResourceFailureException, QueryTimeoutException). Verificação de que stack traces nunca chegam ao usuário.
 
 ---
 
-## Fail Early e Fail Gracefully
+## O que mudou do TP4 para o TP5
 
-A estratégia do TP3 foi mantida e estendida para o novo módulo.
+### Refatoração: BaseEntity
 
-**Fail Early:** validação com `@Valid` no controller, null guards nos services, e agora também a verificação de integridade referencial no `CategoryService.delete()`. A ideia é sempre rejeitar o mais cedo possível, antes de comprometer qualquer recurso.
+Extraí `id`, `name` e `description` para `BaseEntity` (`@MappedSuperclass`). Tanto `Product` quanto `Category` herdam dessa classe. Isso elimina os campos duplicados e organiza a hierarquia — campos comuns ficam na superclasse, campos específicos nas subclasses.
 
-**Fail Gracefully:** o `GlobalExceptionHandler` continua capturando exceções não tratadas e devolvendo mensagens genéricas. Stack traces nunca chegam ao usuário.
+### Refatoração: Command-Query Separation
+
+A interface `CrudService<T, ID>` foi substituída por `QueryService<T, ID>` (consultas) e `CommandService<T, ID>` (escritas). Isso aplica o princípio da imutabilidade separando operações de leitura das de modificação. Na prática, os services implementam as duas interfaces, mas o contrato é claro: consultas não têm efeitos colaterais.
+
+### Refatoração: Condicionais simplificadas
+
+Condicionais no `ProductController.save()` foram simplificadas com operador ternário. Multi-catch no `CategoryController.delete()` para exceções com tratamento idêntico. Guardas e early returns já existiam nos services — foram mantidos.
+
+### Gradle
+
+Adicionado `build.gradle` com os mesmos plugins e dependências do Maven. SpotBugs integrado para análise estática. JaCoCo com mínimo de 90%. O Maven (pom.xml) foi mantido para compatibilidade, mas o pipeline CI/CD agora usa Gradle.
+
+### Pipeline CI/CD completo com Railway
+
+O workflow básico do TP4 (build + test + upload) foi substituído por um pipeline completo:
+- **6 jobs** sequenciais com dependências entre si
+- **SAST** com SpotBugs
+- **DAST** com testes de fuzz e stress contra a aplicação rodando
+- **3 ambientes** (dev → test → prod) com deploy progressivo no Railway
+- **Aprovação manual** obrigatória para produção
+- **Logs personalizados** e resumos em Markdown em cada job
+- **OIDC** habilitado para integração segura com cloud
+- **Gatilhos** para push, PR, release e dispatch manual
+
+### Cobertura mínima: 90%
+
+Aumentada de 85% para 90% conforme requisito do TP5.
 
 ---
 
 ## Decisões e Premissas
 
-**Por que Categorias?** Era a entidade que mais fazia sentido para integrar com Produtos. A relação é direta, permite demonstrar restrição de exclusão e preenche o requisito de comunicação entre os dois sistemas sem forçar uma abstração artificial.
+**BaseEntity vs interfaces para campos comuns:** escolhi `@MappedSuperclass` porque é a forma natural do JPA para compartilhar campos entre entidades sem criar uma tabela separada. Interfaces não resolveriam o mapeamento.
 
-**Categoria opcional:** o vínculo é nullable de propósito. Não quis quebrar compatibilidade com os dados do TP3 nem obrigar o usuário a criar categorias antes de cadastrar produtos.
+**CQS sem CQRS completo:** separei as interfaces mas os services continuam lendo e escrevendo no mesmo repositório. CQRS com event sourcing seria over-engineering para esse contexto.
 
-**H2 em memória:** mesma decisão do TP3. Dados se perdem ao reiniciar, mas elimina dependência de banco externo. Para contexto acadêmico, a troca compensa.
+**Gradle + Maven:** mantive os dois porque o Maven já estava estável e não faz sentido quebrar builds anteriores. O CI usa Gradle, mas quem preferir Maven pode continuar usando.
 
-**Idioma:** interface em PT-BR, código em inglês. Mesma convenção do TP3.
+**Railway para deploy:** escolhi Railway porque suporta Java nativamente, detecta o build system (Gradle/Maven) e injeta a porta via `PORT`. O free tier é suficiente para o projeto e o deploy é feito via CLI no workflow.
+
+**H2 em memória:** mesma decisão dos TPs anteriores. Dados se perdem ao reiniciar, mas elimina dependência de banco externo.
+
+**Idioma:** interface em PT-BR, código em inglês. Mesma convenção dos TPs anteriores.

@@ -3,7 +3,7 @@
 ## Pré-requisitos
 
 - Java 21+
-- Maven 3.8+
+- Gradle 8.5+ (ou Maven 3.8+)
 - Google Chrome (só para os testes Selenium — se não tiver, eles são ignorados e o build não quebra)
 
 ---
@@ -11,6 +11,10 @@
 ## Executando a Aplicação
 
 ```bash
+# Com Gradle
+gradle bootRun
+
+# Com Maven
 mvn spring-boot:run
 ```
 
@@ -21,27 +25,84 @@ Acesse [http://localhost:8080/products](http://localhost:8080/products). A barra
 ## Testes e Cobertura
 
 ```bash
-# Rodar todos os testes
+# Rodar todos os testes (Gradle)
+gradle test
+
+# Rodar todos os testes (Maven)
 mvn clean test
 
-# Gerar relatório de cobertura (abre em target/site/jacoco/index.html)
+# Gerar relatório de cobertura (Gradle)
+gradle test jacocoTestReport
+# Relatório em: build/reports/jacoco/test/html/index.html
+
+# Gerar relatório de cobertura (Maven)
 mvn clean test jacoco:report
+# Relatório em: target/site/jacoco/index.html
 ```
 
-São 172 testes no total. O JaCoCo está configurado para reprovar o build automaticamente se a cobertura de linhas cair abaixo de 85%, então o `mvn clean test` já valida isso — não precisa rodar nada separado.
+São 172 testes no total. O JaCoCo está configurado para reprovar o build automaticamente se a cobertura de linhas cair abaixo de 90%, então o `gradle test` ou `mvn clean test` já valida isso.
 
 ---
 
-## GitHub Actions
+## Análise Estática (SAST)
 
-O workflow de CI (`.github/workflows/ci.yml`) roda automaticamente em push e PR na main. Também dá para disparar manualmente via `workflow_dispatch`.
+```bash
+gradle spotbugsMain
+# Relatório em: build/reports/spotbugs/main.html
+```
 
-O que ele faz:
-1. Configura Java 21 (Temurin) no runner `ubuntu-latest`
-2. Roda `mvn clean test` (build + testes + check de cobertura)
-3. Sobe o relatório JaCoCo como artefato
+O SpotBugs detecta bugs, vulnerabilidades e code smells no código compilado. Está configurado com `ignoreFailures = true` para não bloquear o build, mas os achados ficam no relatório.
 
-Para acompanhar: aba **Actions** no repositório do GitHub. O relatório de cobertura fica disponível para download nos artefatos de cada execução.
+---
+
+## GitHub Actions (CI/CD)
+
+O workflow de CI/CD (`.github/workflows/ci.yml`) roda automaticamente em push, PR na main, release e dispatch manual.
+
+### Pipeline
+
+```
+Build & Test → SAST → Deploy Dev → DAST → Deploy Test → Deploy Prod
+```
+
+### O que cada job faz
+
+| Job | Descrição |
+|---|---|
+| Build & Test | Compila com Gradle, roda 172 testes, gera cobertura, sobe artefatos |
+| SAST | Análise estática com SpotBugs |
+| Deploy Dev | Deploy automático no ambiente dev |
+| DAST | Testes de segurança dinâmicos (fuzz + stress) contra app rodando |
+| Deploy Test | Deploy no ambiente test + validação pós-deploy com Selenium |
+| Deploy Prod | Deploy em produção — requer aprovação manual |
+
+### Acompanhando
+
+- Aba **Actions** no repositório do GitHub
+- Cada job gera um **resumo em Markdown** visível diretamente na interface
+- Relatórios de cobertura, SAST e testes ficam nos **artefatos** de cada execução
+- **Badges** no README mostram status do pipeline
+
+### Deploy (Railway)
+
+O deploy é feito no [Railway](https://railway.app) via CLI nos workflows.
+
+**Setup inicial:**
+1. Crie um projeto no Railway e conecte ao repositório
+2. Gere um token em Railway → Settings → Tokens
+3. Adicione o token como `RAILWAY_TOKEN` nos secrets do GitHub (Settings → Secrets → Actions)
+
+**Ambientes:**
+
+| Ambiente | Proteção |
+|---|---|
+| dev | Automático após SAST |
+| test | Automático após DAST |
+| prod | Aprovação manual obrigatória |
+
+Para configurar aprovação manual: Settings → Environments → prod → Required reviewers.
+
+Railway detecta o Java automaticamente, faz build com Gradle e sobe a aplicação na porta que ele injeta via `PORT`.
 
 ---
 
@@ -54,8 +115,8 @@ Para acompanhar: aba **Actions** no repositório do GitHub. O relatório de cobe
 | Controller | `ProductControllerTest` | Endpoints HTTP, validação, flash messages |
 | Controller | `CategoryControllerTest` | Mesma cobertura para categorias |
 | Integração | `ProductCategoryIntegrationTest` | Comunicação entre os dois módulos (service e HTTP) |
-| Selenium | `ProductSeleniumTest` | Fluxo completo no Chrome headless |
-| Fuzz | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
+| Selenium | `ProductSeleniumTest` | Fluxo completo no Chrome headless (pós-deploy) |
+| Fuzz/DAST | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
 | Falhas | `FailureSimulationTest` | Banco indisponível, timeout |
 | Stress | `StressTest` | Volume, concorrência |
 | Modelo | `ProductTest`, `CategoryTest` | Bean Validation |
@@ -64,17 +125,19 @@ Para acompanhar: aba **Actions** no repositório do GitHub. O relatório de cobe
 
 ---
 
-## Principais Mudanças (TP3 → TP4)
+## Principais Mudanças (TP4 → TP5)
 
-**Interface genérica `CrudService<T, ID>`** — antes, o `ProductService` tinha os métodos CRUD sem nenhum contrato formal. Agora existe uma interface que tanto ele quanto o `CategoryService` implementam. Se precisar de um terceiro módulo no futuro, a estrutura já está pronta.
+**`BaseEntity` (`@MappedSuperclass`)** — campos comuns (`id`, `name`, `description`) extraídos para superclasse. Product e Category herdam dela. Elimina duplicação e organiza hierarquia.
 
-**Módulo de Categorias** — CRUD completo com model, repository, service, controller e templates. Segue exatamente o mesmo padrão do módulo de Produtos.
+**Command-Query Separation** — `CrudService<T, ID>` substituída por `QueryService<T, ID>` (consultas) + `CommandService<T, ID>` (escritas). Separa operações de leitura das de modificação.
 
-**Integração Product ↔ Category** — produto tem um `@ManyToOne` opcional com categoria. O formulário de produto mostra um dropdown de categorias, e a listagem exibe a categoria associada. Categorias com produtos vinculados não podem ser excluídas (o service valida antes de deletar).
+**Condicionais simplificadas** — ternário no ProductController, multi-catch no CategoryController. Menos código, mesma clareza.
 
-**Nav bar compartilhada** — fragment Thymeleaf (`fragments/header.html`) incluído em todas as páginas via `th:replace`. Antes cada template era independente.
+**Build Gradle** — `build.gradle` com SpotBugs e JaCoCo integrados. Maven mantido para compatibilidade.
 
-**CI com GitHub Actions** — build, testes e cobertura automatizados em cada push/PR.
+**Pipeline CI/CD completo** — 6 jobs, 3 ambientes com deploy no Railway, SAST/DAST, aprovação manual para prod, logs personalizados, resumos em Markdown, badges.
+
+**Cobertura 90%** — aumentada de 85% do TP4.
 
 ---
 
@@ -82,4 +145,5 @@ Para acompanhar: aba **Actions** no repositório do GitHub. O relatório de cobe
 
 - O H2 é em memória — dados se perdem ao reiniciar. É proposital; elimina dependência de banco externo.
 - Os testes Selenium precisam do Chrome, mas se ele não estiver instalado, os testes são ignorados via `assumeTrue` e o build segue normalmente.
-- A categoria no produto é opcional. Dá para cadastrar produtos sem categoria, e os dados antigos continuam válidos.
+- A categoria no produto é opcional. Dá para cadastrar produtos sem categoria.
+- O Gradle e o Maven coexistem. O CI usa Gradle, mas o Maven continua funcional.
