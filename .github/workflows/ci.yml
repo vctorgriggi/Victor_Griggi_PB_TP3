@@ -164,7 +164,7 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           echo "::group::Deploy dev via Railway"
-          railway up --detach
+          railway up --detach --service remarkable-reverence
           echo "::endgroup::"
           echo "## 🚀 Deploy Dev" >> $GITHUB_STEP_SUMMARY
           echo "✅ Deploy realizado para ambiente **dev** via Railway" >> $GITHUB_STEP_SUMMARY
@@ -246,7 +246,7 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           echo "::group::Deploy test via Railway"
-          railway up --detach
+          railway up --detach --service remarkable-reverence
           echo "::endgroup::"
 
       - name: Setup Java ${{ env.JAVA_VERSION }}
@@ -304,7 +304,7 @@ jobs:
           RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
         run: |
           echo "::group::Deploy prod via Railway"
-          railway up --detach
+          railway up --detach --service remarkable-reverence
           echo "::endgroup::"
           echo "## 🏁 Deploy Produção" >> $GITHUB_STEP_SUMMARY
           echo "✅ Deploy realizado para ambiente **prod** via Railway" >> $GITHUB_STEP_SUMMARY
