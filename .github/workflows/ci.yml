@@ -12,6 +12,7 @@ on:
 env:
   JAVA_VERSION: '21'
   JAVA_DISTRIBUTION: 'temurin'
+  GRADLE_VERSION: '8.5'
 
 permissions:
   contents: read
@@ -38,6 +39,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
       - name: Build
         run: |
@@ -112,6 +115,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
       - name: SpotBugs — análise estática
         run: |
@@ -184,6 +189,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
       - name: Iniciar aplicação para testes dinâmicos
         run: |
@@ -250,6 +257,8 @@ jobs:
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: ${{ env.GRADLE_VERSION }}
 
       - name: Validação pós-deploy (Selenium)
         run: |
