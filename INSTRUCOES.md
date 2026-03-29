@@ -2,148 +2,116 @@
 
 ## Pré-requisitos
 
-- Java 21+
-- Gradle 8.5+ (ou Maven 3.8+)
-- Google Chrome (só para os testes Selenium — se não tiver, eles são ignorados e o build não quebra)
+Precisa de Java 21+ e Gradle 8.5+ (ou Maven 3.8+). Google Chrome só é necessário pros testes Selenium — se não tiver, eles são ignorados automaticamente e o build segue sem problemas.
 
 ---
 
-## Executando a Aplicação
+## Rodando a aplicação
 
 ```bash
-# Com Gradle
-gradle bootRun
-
-# Com Maven
-mvn spring-boot:run
+./gradlew bootRun
+# ou: mvn spring-boot:run
 ```
 
-Acesse [http://localhost:8080/products](http://localhost:8080/products). A barra de navegação no topo permite alternar entre Produtos e Categorias.
+Depois é só acessar [http://localhost:8080/products](http://localhost:8080/products). A nav bar no topo alterna entre Produtos e Categorias.
 
 ---
 
-## Testes e Cobertura
+## Testes e cobertura
 
 ```bash
-# Rodar todos os testes (Gradle)
-gradle test
+# rodar todos os testes
+./gradlew test
+# ou: mvn clean test
 
-# Rodar todos os testes (Maven)
-mvn clean test
+# gerar relatório de cobertura
+./gradlew test jacocoTestReport
+# relatório fica em: build/reports/jacoco/test/html/index.html
 
-# Gerar relatório de cobertura (Gradle)
-gradle test jacocoTestReport
-# Relatório em: build/reports/jacoco/test/html/index.html
-
-# Gerar relatório de cobertura (Maven)
-mvn clean test jacoco:report
-# Relatório em: target/site/jacoco/index.html
+# com maven:
+# mvn clean test jacoco:report → target/site/jacoco/index.html
 ```
 
-São 172 testes no total. O JaCoCo está configurado para reprovar o build automaticamente se a cobertura de linhas cair abaixo de 90%, então o `gradle test` ou `mvn clean test` já valida isso.
+São 172 testes no total. O JaCoCo tá configurado pra reprovar o build se a cobertura cair abaixo de 90%, então rodar os testes já valida isso automaticamente.
 
 ---
 
-## Análise Estática (SAST)
+## Análise estática (SAST)
 
 ```bash
-gradle spotbugsMain
-# Relatório em: build/reports/spotbugs/main.html
+./gradlew spotbugsMain
+# relatório em: build/reports/spotbugs/main.html
 ```
 
-O SpotBugs detecta bugs, vulnerabilidades e code smells no código compilado. Está configurado com `ignoreFailures = true` para não bloquear o build, mas os achados ficam no relatório.
+O SpotBugs roda no código compilado e detecta bugs, vulnerabilidades e code smells. Tá com `ignoreFailures = true` pra não travar o build, mas os achados ficam todos no relatório.
 
 ---
 
-## GitHub Actions (CI/CD)
+## CI/CD
 
-O workflow de CI/CD (`.github/workflows/ci.yml`) roda automaticamente em push, PR na main, release e dispatch manual.
-
-### Pipeline
+O workflow (`.github/workflows/ci.yml`) roda em push na main, PR, release e dispatch manual. O pipeline tem 6 jobs:
 
 ```
 Build & Test → SAST → Deploy Dev → DAST → Deploy Test → Deploy Prod
 ```
 
-### O que cada job faz
+Primeiro compila e roda os testes. Depois faz análise estática com SpotBugs. Se tudo passa, deploya no ambiente dev e roda os testes de segurança dinâmicos (fuzz e stress) contra a aplicação rodando. Depois deploya no ambiente test com validação Selenium pós-deploy. O deploy em prod só acontece em releases ou dispatch manual, e precisa de aprovação.
 
-| Job | Descrição |
-|---|---|
-| Build & Test | Compila com Gradle, roda 172 testes, gera cobertura, sobe artefatos |
-| SAST | Análise estática com SpotBugs |
-| Deploy Dev | Deploy automático no ambiente dev |
-| DAST | Testes de segurança dinâmicos (fuzz + stress) contra app rodando |
-| Deploy Test | Deploy no ambiente test + validação pós-deploy com Selenium |
-| Deploy Prod | Deploy em produção — requer aprovação manual |
-
-### Acompanhando
-
-- Aba **Actions** no repositório do GitHub
-- Cada job gera um **resumo em Markdown** visível diretamente na interface
-- Relatórios de cobertura, SAST e testes ficam nos **artefatos** de cada execução
-- **Badges** no README mostram status do pipeline
-
-### Deploy (Railway)
-
-O deploy é feito no [Railway](https://railway.app) via CLI nos workflows.
-
-**Setup inicial:**
-1. Crie um projeto no Railway e conecte ao repositório
-2. Gere um token em Railway → Settings → Tokens
-3. Adicione o token como `RAILWAY_TOKEN` nos secrets do GitHub (Settings → Secrets → Actions)
-
-**Ambientes:**
-
-| Ambiente | Proteção |
-|---|---|
-| dev | Automático após SAST |
-| test | Automático após DAST |
-| prod | Aprovação manual obrigatória |
-
-Para configurar aprovação manual: Settings → Environments → prod → Required reviewers.
-
-Railway detecta o Java automaticamente, faz build com Gradle e sobe a aplicação na porta que ele injeta via `PORT`.
+Pra acompanhar: aba **Actions** no GitHub. Cada job gera um resumo em Markdown direto na interface, e os relatórios de cobertura, SAST e testes ficam nos artefatos.
 
 ---
 
-## Resumo dos Testes
+## Deploy (Railway)
+
+O deploy é feito no [Railway](https://railway.app) via CLI nos workflows. Pra configurar:
+
+1. Cria um projeto no Railway e conecta ao repositório
+2. Gera um project token (Settings do projeto → Tokens)
+3. Adiciona como `RAILWAY_TOKEN` nos secrets do GitHub (Settings → Secrets → Actions)
+4. Cria os environments `dev`, `test` e `prod` no GitHub (Settings → Environments)
+5. No environment `prod`, adiciona Required reviewers pra aprovação manual
+
+O Railway detecta o Java sozinho, faz build com Gradle e sobe a aplicação na porta que ele injeta via `PORT`.
+
+| Ambiente | Proteção |
+|---|---|
+| dev | Automático |
+| test | Automático |
+| prod | Aprovação manual |
+
+---
+
+## Resumo dos testes
 
 | Tipo | Arquivo | O que testa |
 |---|---|---|
-| Unitários | `ProductServiceTest` | CRUD do service, null guards, fail early |
-| Unitários | `CategoryServiceTest` | CRUD de categorias, bloqueio de exclusão com produtos |
+| Unitário | `ProductServiceTest` | CRUD, null guards, fail early |
+| Unitário | `CategoryServiceTest` | CRUD, bloqueio de exclusão com produtos |
 | Controller | `ProductControllerTest` | Endpoints HTTP, validação, flash messages |
-| Controller | `CategoryControllerTest` | Mesma cobertura para categorias |
+| Controller | `CategoryControllerTest` | Mesma cobertura pra categorias |
 | Integração | `ProductCategoryIntegrationTest` | Comunicação entre os dois módulos (service e HTTP) |
-| Selenium | `ProductSeleniumTest` | Fluxo completo no Chrome headless (pós-deploy) |
-| Fuzz/DAST | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
+| Selenium | `ProductSeleniumTest` | Fluxo completo no Chrome headless |
+| Fuzz | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
 | Falhas | `FailureSimulationTest` | Banco indisponível, timeout |
 | Stress | `StressTest` | Volume, concorrência |
 | Modelo | `ProductTest`, `CategoryTest` | Bean Validation |
-| Exception | `GlobalExceptionHandlerTest` | Tratamento centralizado de exceções |
+| Exception | `GlobalExceptionHandlerTest` | Tratamento centralizado |
 | Contexto | `CrudApplicationTest` | Inicialização do Spring Boot |
 
 ---
 
-## Principais Mudanças (TP4 → TP5)
+## O que mudou (TP4 → TP5)
 
-**`BaseEntity` (`@MappedSuperclass`)** — campos comuns (`id`, `name`, `description`) extraídos para superclasse. Product e Category herdam dela. Elimina duplicação e organiza hierarquia.
+Extraí os campos comuns (`id`, `name`, `description`) pra uma superclasse `BaseEntity` usando `@MappedSuperclass`. Product e Category herdam dela agora — sem mais duplicação.
 
-**Command-Query Separation** — `CrudService<T, ID>` substituída por `QueryService<T, ID>` (consultas) + `CommandService<T, ID>` (escritas). Separa operações de leitura das de modificação.
+A `CrudService<T, ID>` foi substituída por `QueryService` (consultas) + `CommandService` (escritas), separando leitura de modificação.
 
-**Condicionais simplificadas** — ternário no ProductController, multi-catch no CategoryController. Menos código, mesma clareza.
+Nos controllers, simplifiquei condicionais: ternário no ProductController, multi-catch no CategoryController.
 
-**Build Gradle** — `build.gradle` com SpotBugs e JaCoCo integrados. Maven mantido para compatibilidade.
-
-**Pipeline CI/CD completo** — 6 jobs, 3 ambientes com deploy no Railway, SAST/DAST, aprovação manual para prod, logs personalizados, resumos em Markdown, badges.
-
-**Cobertura 90%** — aumentada de 85% do TP4.
+Adicionei `build.gradle` com SpotBugs e JaCoCo. O pipeline de CI que antes era um job passou pra 6, com SAST, DAST, deploy em 3 ambientes no Railway e aprovação manual pra prod. Cobertura mínima subiu de 85% pra 90%.
 
 ---
 
 ## Observações
 
-- O H2 é em memória — dados se perdem ao reiniciar. É proposital; elimina dependência de banco externo.
-- Os testes Selenium precisam do Chrome, mas se ele não estiver instalado, os testes são ignorados via `assumeTrue` e o build segue normalmente.
-- A categoria no produto é opcional. Dá para cadastrar produtos sem categoria.
-- O Gradle e o Maven coexistem. O CI usa Gradle, mas o Maven continua funcional.
+O H2 é em memória — dados somem ao reiniciar. É de propósito, pra não depender de banco externo. Os testes Selenium precisam do Chrome mas se ignoram sozinhos se ele não tiver. A categoria no produto é opcional. O Gradle e o Maven coexistem — CI usa Gradle, mas Maven continua funcionando.

@@ -1,36 +1,33 @@
 # TP5
 
-![CI/CD Pipeline](https://github.com/Victor-Griggi/PB-TP3/actions/workflows/ci.yml/badge.svg)
+![CI/CD Pipeline](https://github.com/vctorgriggi/Victor_Griggi_PB_TP3/actions/workflows/ci.yml/badge.svg)
 ![Java](https://img.shields.io/badge/Java-21-blue)
 ![Spring Boot](https://img.shields.io/badge/Spring%20Boot-3.2.5-green)
 ![Coverage](https://img.shields.io/badge/coverage-%3E90%25-brightgreen)
 
 ## Visão Geral
 
-Este TP finaliza o projeto com refatoração, automação completa de CI/CD e deploy multi-ambiente. Dá continuidade ao TP4, que integrou Produtos e Categorias com interface genérica e GitHub Actions.
+Esse TP fecha o projeto. A ideia foi pegar tudo que já existia nos TPs anteriores — o CRUD de produtos, a integração com categorias, a esteira de CI — e levar pra um nível de entrega real: código refatorado, pipeline completo com análise de segurança e deploy automatizado em múltiplos ambientes.
 
-O foco foi:
-- Refatorar o código promovendo imutabilidade e polimorfismo via hierarquia de classes
-- Migrar o build para Gradle com análise estática (SpotBugs) integrada
-- Configurar pipeline CI/CD completo com SAST, DAST, deploy em três ambientes e aprovação manual para produção
-- Adicionar logs personalizados e resumos em Markdown nos workflows
+Do lado de código, a refatoração focou em três frentes: extrair uma superclasse pra eliminar campos duplicados entre Product e Category, separar as interfaces de leitura e escrita (command-query separation) e simplificar condicionais nos controllers. Do lado de infra, migrei o build pra Gradle, configurei SpotBugs pra análise estática, e montei um pipeline de CI/CD com 6 jobs que vai do build até o deploy em produção no Railway — passando por SAST, DAST e validação pós-deploy com Selenium.
+
+A cobertura de testes subiu pra 90% (era 85% no TP4). Os 172 testes continuam passando.
 
 ---
 
 ## Tecnologias
 
-- **Java 21** + **Spring Boot 3.2.5**
-- **Gradle 8.5** — build e gestão de dependências
-- **Maven** — build alternativo (mantido para compatibilidade)
-- **Thymeleaf** — renderização server-side
-- **Spring Data JPA** + **H2** — persistência em memória
-- **Bean Validation** — validação declarativa
-- **Bootstrap 5** — interface responsiva via CDN
-- **JUnit 5** + **Mockito** — testes unitários e de integração
-- **Selenium WebDriver** — testes de interface (Chrome headless)
-- **JaCoCo** — cobertura de testes (mínimo 90%)
-- **SpotBugs** — análise estática de segurança (SAST)
-- **GitHub Actions** — CI/CD com deploy multi-ambiente
+O stack é o mesmo dos TPs anteriores, com algumas adições:
+
+- Java 21 + Spring Boot 3.2.5
+- Thymeleaf pra renderização server-side e Bootstrap 5 pra UI
+- Spring Data JPA + H2 (banco em memória)
+- Bean Validation pra validação declarativa
+- JUnit 5 + Mockito pra testes, Selenium pra E2E
+- JaCoCo pra cobertura (mínimo 90%, enforced no build)
+- **Novo:** Gradle 8.5 como build principal (Maven mantido pra compatibilidade)
+- **Novo:** SpotBugs pra análise estática de segurança (SAST)
+- **Novo:** GitHub Actions com pipeline completo + deploy no Railway
 
 ---
 
@@ -59,29 +56,17 @@ src/main/java/com/crud/
     └── GlobalExceptionHandler.java
 ```
 
-### Camadas
+A organização segue o padrão Model → Repository → Service → Controller. Controllers nunca falam direto com o banco, tudo passa pelo service.
 
-**Model → Repository → Service → Controller**
+No TP4 o `Product` e o `Category` tinham `id`, `name` e `description` repetidos. Agora esses campos vivem no `BaseEntity` (`@MappedSuperclass`) e as duas entidades herdam dele. Cada uma adiciona só o que é específico — preço e quantidade no Product, nada a mais no Category.
 
-A separação é estrita: controllers nunca acessam repositórios diretamente, e services encapsulam toda a lógica de negócio.
-
-### Hierarquia de Classes (BaseEntity)
-
-`Product` e `Category` compartilham `id`, `name` e `description`. Esses campos foram extraídos para `BaseEntity` (`@MappedSuperclass`), eliminando duplicação e organizando a hierarquia conforme o princípio de superclasse/subclasse. Cada entidade herda os campos comuns e adiciona os seus próprios.
-
-### Command-Query Separation
-
-A interface genérica `CrudService<T, ID>` do TP4 foi substituída por duas interfaces:
-- **`QueryService<T, ID>`** — `findAll()`, `findById()` (consultas puras, sem efeitos colaterais)
-- **`CommandService<T, ID>`** — `save()`, `update()`, `delete()` (operações de escrita)
-
-Essa separação aplica o princípio da imutabilidade: métodos de leitura ficam isolados dos que modificam estado.
+A outra mudança grande foi a separação de interfaces. Antes existia uma `CrudService<T, ID>` que misturava consultas e escritas. Agora são duas: `QueryService` (findAll, findById) e `CommandService` (save, update, delete). Os services implementam as duas, mas o contrato fica mais claro — leitura separada de modificação.
 
 ---
 
 ## Pipeline CI/CD
 
-O workflow `.github/workflows/ci.yml` roda em push, PR, release e dispatch manual.
+O workflow roda em push na main, pull request, release e dispatch manual. São 6 jobs encadeados:
 
 ```
 build → sast → deploy-dev → dast → deploy-test → deploy-prod
@@ -89,161 +74,95 @@ build → sast → deploy-dev → dast → deploy-test → deploy-prod
                                               aprovação manual
 ```
 
-### Jobs
+O **Build & Test** compila com Gradle, roda os 172 testes e gera o relatório de cobertura. Se tudo passa, o **SAST** roda o SpotBugs pra análise estática. Depois vem o **Deploy Dev** que sobe a aplicação no Railway. Com o app rodando, o **DAST** executa os testes de fuzz (SQL injection, XSS, caracteres especiais) e stress (volume, concorrência) contra a aplicação real. Se o DAST passa, o **Deploy Test** sobe no ambiente de teste e roda os testes Selenium como validação pós-deploy. O **Deploy Prod** só roda em releases ou dispatch manual, e exige aprovação.
 
-| Job | O que faz |
-|---|---|
-| **Build & Test** | Compila com Gradle, roda testes, gera cobertura JaCoCo, sobe artefatos |
-| **SAST** | Análise estática com SpotBugs (detecta bugs, vulnerabilidades, code smells) |
-| **Deploy Dev** | Deploya artefato no ambiente dev |
-| **DAST** | Testes dinâmicos de segurança (fuzz, SQL injection, XSS, stress) contra a aplicação rodando |
-| **Deploy Test** | Deploya no ambiente test + validação pós-deploy com Selenium |
-| **Deploy Prod** | Deploy em produção — requer aprovação manual, só roda em release ou dispatch |
+Cada job gera logs agrupados (`::group::`) pra facilitar a navegação no GitHub Actions e um resumo em Markdown (`$GITHUB_STEP_SUMMARY`) que aparece direto na interface. Os relatórios de cobertura, SpotBugs e testes ficam nos artefatos de cada execução.
 
-### Gatilhos
+### Deploy no Railway
 
-- `push` na main → roda build, testes, SAST, deploy dev/test
-- `pull_request` na main → roda build e SAST
-- `release` → roda pipeline completo incluindo deploy prod
-- `workflow_dispatch` → execução manual com deploy prod
+O deploy é feito via Railway CLI nos workflows. O token de autenticação (`RAILWAY_TOKEN`) fica nos secrets do repositório — nunca aparece nos logs. A aplicação lê a porta via `${PORT:8080}`, que o Railway injeta automaticamente.
 
-### Logs e Resumos
-
-Cada job produz:
-- **Logs agrupados** (`::group::`) para facilitar navegação no GitHub Actions
-- **Resumo em Markdown** (`$GITHUB_STEP_SUMMARY`) com status e métricas visíveis direto na interface
-- **Artefatos** — relatórios JaCoCo, SpotBugs, resultados de testes e JAR da aplicação
-
-### Ambientes e Proteções (Railway)
-
-O deploy é feito no **Railway** via CLI nos workflows. O `RAILWAY_TOKEN` fica nos secrets do repositório.
-
-| Ambiente | Quando deploya | Proteção |
+| Ambiente | Quando roda | Proteção |
 |---|---|---|
-| `dev` | Merge na main | Nenhuma (automático) |
-| `test` | Após DAST passar | Nenhuma (automático) |
-| `prod` | Release ou dispatch manual | Aprovação manual obrigatória |
+| dev | Merge na main | Automático |
+| test | Após DAST passar | Automático |
+| prod | Release ou dispatch | Aprovação manual |
 
-### Segurança
-
-- **OIDC** habilitado via `permissions: id-token: write` para integração segura com provedores de nuvem
-- **Secrets:** `RAILWAY_TOKEN` armazenado nos secrets do GitHub, nunca exposto nos logs
-- **Env vars** gerenciados via `env:` no workflow e variáveis de ambiente do Railway
-- A aplicação lê a porta via `${PORT:8080}` — Railway injeta a porta automaticamente
+O OIDC tá habilitado no workflow (`permissions: id-token: write`) pra caso seja necessário integrar com outro provedor de nuvem no futuro.
 
 ---
 
 ## Como Executar
 
-**Pré-requisitos:** Java 21+, Gradle 8.5+ (ou Maven 3.8+), Google Chrome (opcional, para Selenium).
+Precisa de Java 21+ e Gradle 8.5+ (ou Maven 3.8+). Chrome é opcional — sem ele os testes Selenium são ignorados e o build segue normal.
 
 ```bash
-# Iniciar a aplicação (Gradle)
-gradle bootRun
-# Ou com Maven
-mvn spring-boot:run
+# iniciar a aplicação
+./gradlew bootRun
+# ou: mvn spring-boot:run
 
-# Acesse: http://localhost:8080/products
+# acessar: http://localhost:8080/products
 
-# Executar todos os testes
-gradle test
-# Ou com Maven
-mvn clean test
+# rodar todos os testes
+./gradlew test
+# ou: mvn clean test
 
-# Gerar relatório de cobertura
-gradle test jacocoTestReport
-# Relatório em: build/reports/jacoco/test/html/index.html
+# gerar relatório de cobertura
+./gradlew test jacocoTestReport
+# relatório em: build/reports/jacoco/test/html/index.html
 
-# Análise estática (SAST)
-gradle spotbugsMain
-# Relatório em: build/reports/spotbugs/main.html
+# análise estática
+./gradlew spotbugsMain
+# relatório em: build/reports/spotbugs/main.html
 ```
 
 ---
 
-## Testes — 172 no total
+## Testes
 
-| Categoria | Arquivo | O que cobre |
+São 172 testes distribuídos em várias categorias:
+
+| Tipo | Arquivo | O que cobre |
 |---|---|---|
-| Unitários | `ProductServiceTest` | Null guards, fail early, CRUD |
-| Unitários | `CategoryServiceTest` | CRUD + impedimento de exclusão com produtos vinculados |
-| Controller | `ProductControllerTest` | Endpoints HTTP, redirecionamentos, flash messages |
-| Controller | `CategoryControllerTest` | Mesma cobertura para o módulo de categorias |
-| Integração | `ProductCategoryIntegrationTest` | Vínculo entre os dois módulos via service e via HTTP |
-| Selenium | `ProductSeleniumTest` | Fluxo completo no browser (Chrome headless) |
-| Fuzz/DAST | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
+| Unitário | `ProductServiceTest` | CRUD, null guards, fail early |
+| Unitário | `CategoryServiceTest` | CRUD, bloqueio de exclusão com produtos vinculados |
+| Controller | `ProductControllerTest` | Endpoints HTTP, validação, flash messages |
+| Controller | `CategoryControllerTest` | Mesma cobertura pra categorias |
+| Integração | `ProductCategoryIntegrationTest` | Vínculo entre os dois módulos (service e HTTP) |
+| Selenium | `ProductSeleniumTest` | Fluxo completo no Chrome headless |
+| Fuzz | `ProductFuzzTest` | SQL injection, XSS, unicode, valores extremos |
 | Falhas | `FailureSimulationTest` | Banco indisponível, timeout, fail early/gracefully |
 | Stress | `StressTest` | Volume, concorrência, listagem pesada |
-| Modelo | `ProductTest`, `CategoryTest` | Bean Validation nas entidades |
+| Modelo | `ProductTest`, `CategoryTest` | Bean Validation |
 | Exception | `GlobalExceptionHandlerTest` | Tratamento centralizado |
 | Contexto | `CrudApplicationTest` | Inicialização do Spring Boot |
 
-### Cobertura (JaCoCo)
+A cobertura mínima é 90%, enforced pelo JaCoCo — se cair abaixo disso, o build quebra. O relatório sobe como artefato no CI.
 
-O mínimo exigido é **90%**. O JaCoCo está configurado para reprovar o build se cair abaixo disso — tanto no Gradle quanto no Maven. O relatório é gerado automaticamente e enviado como artefato no pipeline de CI.
-
-### Estratégias de Teste
-
-**Testes unitários:** Mockito para isolar services dos repositórios. Cada método CRUD tem cobertura de cenários válidos, inválidos e edge cases (null, inexistente).
-
-**Testes de controller:** MockMvc para testar endpoints HTTP sem subir o servidor. Validação de status codes, views, model attributes e flash messages.
-
-**Testes de integração:** `@SpringBootTest` com banco H2 real. Verifica que a comunicação Product↔Category funciona end-to-end via service e via HTTP.
-
-**Testes Selenium (pós-deploy):** Chrome headless com `@Order` para simular fluxo do usuário. Ignorados automaticamente se Chrome não está disponível (`assumeTrue`).
-
-**Testes de segurança (DAST):** Fuzz testing com payloads de SQL injection, XSS e caracteres especiais. Stress testing com volume e concorrência. Executados contra a aplicação rodando no pipeline.
-
-**Testes de resiliência:** Simulação de falhas de banco (DataAccessResourceFailureException, QueryTimeoutException). Verificação de que stack traces nunca chegam ao usuário.
+Os testes unitários usam Mockito pra isolar os services dos repositórios. Os de controller usam MockMvc pra testar endpoints sem subir o servidor. Os de integração usam `@SpringBootTest` com o H2 real pra verificar que Product e Category se comunicam corretamente. Os de Selenium simulam o fluxo do usuário no Chrome headless — se o Chrome não tiver instalado, o `assumeTrue` pula eles sem quebrar o build. Os de fuzz jogam payloads maliciosos (SQL injection, XSS, null bytes) na aplicação pra garantir que ela não crashe. Os de stress criam 50-100 produtos em sequência e testam concorrência com 10 threads simultâneas.
 
 ---
 
-## O que mudou do TP4 para o TP5
+## O que mudou do TP4 pro TP5
 
-### Refatoração: BaseEntity
+A principal mudança de código foi a extração do `BaseEntity`. No TP4, `Product` e `Category` tinham os mesmos campos (`id`, `name`, `description`) copiados. Agora esses campos vivem na superclasse e as entidades herdam. Parece simples, mas elimina duplicação e deixa a hierarquia limpa — se amanhã aparecer uma terceira entidade com nome e descrição, é só estender `BaseEntity`.
 
-Extraí `id`, `name` e `description` para `BaseEntity` (`@MappedSuperclass`). Tanto `Product` quanto `Category` herdam dessa classe. Isso elimina os campos duplicados e organiza a hierarquia — campos comuns ficam na superclasse, campos específicos nas subclasses.
+A interface `CrudService<T, ID>` do TP4 foi substituída por duas: `QueryService` pra consultas e `CommandService` pra escritas. A motivação é command-query separation — métodos que leem dados ficam separados dos que modificam. Os services implementam as duas, então pra quem usa nada muda, mas o contrato fica mais explícito.
 
-### Refatoração: Command-Query Separation
+Nos controllers, simplifiquei algumas condicionais. O `ProductController.save()` tinha um if/else pra setar categoria que virou um ternário. O `CategoryController.delete()` tinha dois catches idênticos que virou um multi-catch. Pouca coisa, mas deixa o código mais direto.
 
-A interface `CrudService<T, ID>` foi substituída por `QueryService<T, ID>` (consultas) e `CommandService<T, ID>` (escritas). Isso aplica o princípio da imutabilidade separando operações de leitura das de modificação. Na prática, os services implementam as duas interfaces, mas o contrato é claro: consultas não têm efeitos colaterais.
-
-### Refatoração: Condicionais simplificadas
-
-Condicionais no `ProductController.save()` foram simplificadas com operador ternário. Multi-catch no `CategoryController.delete()` para exceções com tratamento idêntico. Guardas e early returns já existiam nos services — foram mantidos.
-
-### Gradle
-
-Adicionado `build.gradle` com os mesmos plugins e dependências do Maven. SpotBugs integrado para análise estática. JaCoCo com mínimo de 90%. O Maven (pom.xml) foi mantido para compatibilidade, mas o pipeline CI/CD agora usa Gradle.
-
-### Pipeline CI/CD completo com Railway
-
-O workflow básico do TP4 (build + test + upload) foi substituído por um pipeline completo:
-- **6 jobs** sequenciais com dependências entre si
-- **SAST** com SpotBugs
-- **DAST** com testes de fuzz e stress contra a aplicação rodando
-- **3 ambientes** (dev → test → prod) com deploy progressivo no Railway
-- **Aprovação manual** obrigatória para produção
-- **Logs personalizados** e resumos em Markdown em cada job
-- **OIDC** habilitado para integração segura com cloud
-- **Gatilhos** para push, PR, release e dispatch manual
-
-### Cobertura mínima: 90%
-
-Aumentada de 85% para 90% conforme requisito do TP5.
+Do lado de infra, a mudança foi grande. Adicionei o `build.gradle` com SpotBugs e JaCoCo integrados, e o pipeline de CI que antes era um job só (build + test + upload) agora tem 6 jobs com SAST, DAST, deploy em 3 ambientes e aprovação manual pra produção. O deploy vai pro Railway, que detecta o Java e sobe a aplicação automaticamente. A cobertura mínima subiu de 85% pra 90%.
 
 ---
 
-## Decisões e Premissas
+## Decisões
 
-**BaseEntity vs interfaces para campos comuns:** escolhi `@MappedSuperclass` porque é a forma natural do JPA para compartilhar campos entre entidades sem criar uma tabela separada. Interfaces não resolveriam o mapeamento.
+Escolhi `@MappedSuperclass` pro `BaseEntity` porque é a forma natural do JPA pra compartilhar campos sem criar tabela separada. Interfaces não resolveriam o mapeamento.
 
-**CQS sem CQRS completo:** separei as interfaces mas os services continuam lendo e escrevendo no mesmo repositório. CQRS com event sourcing seria over-engineering para esse contexto.
+Separei as interfaces de consulta e comando mas não fui pra CQRS completo com event sourcing — seria over-engineering pro contexto. O repositório continua o mesmo pra leitura e escrita.
 
-**Gradle + Maven:** mantive os dois porque o Maven já estava estável e não faz sentido quebrar builds anteriores. O CI usa Gradle, mas quem preferir Maven pode continuar usando.
+Mantive o Maven junto com o Gradle porque o Maven já tava estável e não queria quebrar quem já usava. O CI usa Gradle, mas `mvn clean test` continua funcionando.
 
-**Railway para deploy:** escolhi Railway porque suporta Java nativamente, detecta o build system (Gradle/Maven) e injeta a porta via `PORT`. O free tier é suficiente para o projeto e o deploy é feito via CLI no workflow.
+Railway foi a escolha pra deploy porque suporta Java direto, detecta o build system e injeta a porta automaticamente. O free tier é mais que suficiente pro projeto.
 
-**H2 em memória:** mesma decisão dos TPs anteriores. Dados se perdem ao reiniciar, mas elimina dependência de banco externo.
-
-**Idioma:** interface em PT-BR, código em inglês. Mesma convenção dos TPs anteriores.
+O H2 em memória é proposital — dados se perdem ao reiniciar, mas elimina dependência de banco externo. Pra contexto acadêmico, compensa.
