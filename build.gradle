@@ -13,6 +13,11 @@ java {
     sourceCompatibility = '21'
 }
 
+// desabilita plain jar (railway precisa de apenas um jar executavel)
+jar {
+    enabled = false
+}
+
 repositories {
     mavenCentral()
 }
